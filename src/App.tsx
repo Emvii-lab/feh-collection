@@ -265,6 +265,20 @@ export default function App() {
                     className={`h-11 w-11 transition ${on ? '' : 'opacity-55 grayscale hover:opacity-80'
                       }`}
                   />
+                ) : t.key === 'credits' ? (
+                  <img
+                    src="/feh/ui/voice_actor.png"
+                    alt=""
+                    className={`h-11 w-11 object-contain transition ${on ? '' : 'opacity-55 grayscale hover:opacity-80'
+                      }`}
+                  />
+                ) : t.key === 'equipe' ? (
+                  <img
+                    src="/feh/ui/battle.png"
+                    alt=""
+                    className={`h-11 w-11 object-contain transition ${on ? '' : 'opacity-55 grayscale hover:opacity-80'
+                      }`}
+                  />
                 ) : (
                   <RailIcon name={t.icon} color={on ? '#eaf6ff' : '#94866c'} />
                 )}
