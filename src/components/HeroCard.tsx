@@ -43,11 +43,12 @@ export function HeroCard({
 
   return (
     <button
-      onClick={onOpen}
+      onClick={owned ? onOpen : undefined}
+      aria-disabled={!owned}
       style={{ boxShadow: cardShadow, borderColor }}
-      className={`group relative cursor-pointer overflow-hidden rounded-2xl border bg-white/[0.02] p-0 text-left transition-all duration-150 hover:-translate-y-[3px] ${
-        selected ? '-translate-y-[3px]' : ''
-      }`}
+      className={`group relative overflow-hidden rounded-2xl border bg-white/[0.02] p-0 text-left transition-all duration-150 ${
+        owned ? 'cursor-pointer hover:-translate-y-[3px]' : 'cursor-default'
+      } ${selected ? '-translate-y-[3px]' : ''}`}
     >
       <div className="relative aspect-[1/1.06] overflow-hidden bg-[rgba(14,10,7,.72)]">
         <div className="absolute inset-x-0 top-0 bottom-[62px]">
