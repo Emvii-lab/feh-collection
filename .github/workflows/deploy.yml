@@ -26,7 +26,8 @@ jobs:
           node-version: 20
           cache: npm
 
-      - run: npm ci
+      # npm install (et non npm ci) : plus tolérant sur les deps natives multi-plateforme.
+      - run: npm install --no-audit --no-fund
 
       # Les variables Supabase sont injectées au build (clé anon = publique, protégée par RLS).
       - run: npm run build
