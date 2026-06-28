@@ -1,0 +1,151 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Albert+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+/* Police officielle Fire Emblem Heroes (usage local) */
+@font-face {
+  font-family: 'FEH Game';
+  src:
+    url('/feh/FEH_Font.woff2') format('woff2'),
+    url('/feh/FEH_Font.ttf') format('truetype');
+  font-weight: 400 700;
+  font-display: swap;
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+  /* Boutons & cadres en 9-slice depuis les vrais sprites FEH */
+  .feh-btn {
+    border-style: solid;
+    border-color: transparent;
+    border-width: 12px 30px;
+    border-image: url('/feh/ui/btn.png') 26 104 fill stretch;
+  }
+  .feh-window {
+    border-style: solid;
+    border-color: transparent;
+    border-width: 26px 48px;
+    border-image: url('/feh/ui/window.png') 48 90 fill stretch;
+  }
+  /* Cadre ornementé (barre de recherche) */
+  .feh-search {
+    border-style: solid;
+    border-color: transparent;
+    border-width: 11px 30px;
+    border-image: url('/feh/ui/searchbar.png') 54 96 fill stretch;
+  }
+  /* Texte gravé clair + contour sombre (lisible sur n'importe quelle pierre) */
+  .txt-stroke {
+    color: #fff4d8;
+    text-shadow:
+      -1px -1px 0 #241606,
+      1px -1px 0 #241606,
+      -1px 1px 0 #241606,
+      1px 1px 0 #241606,
+      0 2px 4px rgba(0, 0, 0, 0.6);
+  }
+  .txt-stroke-sm {
+    color: #ffe7bd;
+    text-shadow:
+      -1px -1px 0 #2a1c08,
+      1px -1px 0 #2a1c08,
+      -1px 1px 0 #2a1c08,
+      1px 1px 0 #2a1c08,
+      0 1px 3px rgba(0, 0, 0, 0.55);
+  }
+  /* Texte des bannières-parchemin : blanc à fort contour sombre (style jeu) */
+  .txt-banner {
+    color: #ffffff;
+    text-shadow:
+      -2px -2px 0 #3a2410,
+      2px -2px 0 #3a2410,
+      -2px 2px 0 #3a2410,
+      2px 2px 0 #3a2410,
+      0 -2px 0 #3a2410,
+      0 2px 0 #3a2410,
+      -2px 0 0 #3a2410,
+      2px 0 0 #3a2410,
+      0 3px 5px rgba(0, 0, 0, 0.5);
+  }
+  /* Panneau de description (9-slice depuis le sprite teal du jeu) */
+  .feh-desc {
+    border-style: solid;
+    border-color: transparent;
+    border-width: 18px 28px;
+    border-image: url('/feh/ui/desc_panel.png') 36 56 fill stretch;
+  }
+  /* Texte de description : blanc à contour teal sombre (style jeu) */
+  .txt-desc {
+    color: #ffffff;
+    text-shadow:
+      -1px -1px 0 #11343f,
+      1px -1px 0 #11343f,
+      -1px 1px 0 #11343f,
+      1px 1px 0 #11343f,
+      0 2px 3px rgba(0, 0, 0, 0.5);
+  }
+  /* Cadre pierre du header (9-slice : bords nets, contenu à l'intérieur) */
+  .feh-header {
+    border-style: solid;
+    border-color: transparent;
+    border-width: 14px 44px 24px 44px;
+    border-image: url('/feh/ui/header.png') 42 96 78 96 fill stretch;
+  }
+  /* Bouton or hexagonal (onglets Tous / Possédés / Manquants) */
+  .feh-tab {
+    border-style: solid;
+    border-color: transparent;
+    border-width: 14px 28px;
+    border-image: url('/feh/ui/btn_filter.png') 26 48 fill stretch;
+  }
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    @apply bg-warm-deep text-warm-text font-feh antialiased;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Va-et-vient des flèches de galerie (loupe) */
+@keyframes arrowNudgeL {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(-10px);
+  }
+}
+@keyframes arrowNudgeR {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(10px);
+  }
+}
+.anim-arrow-l {
+  animation: arrowNudgeL 0.85s ease-in-out infinite;
+}
+.anim-arrow-r {
+  animation: arrowNudgeR 0.85s ease-in-out infinite;
+}
