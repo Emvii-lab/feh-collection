@@ -5,7 +5,9 @@ import { HeroCard } from './components/HeroCard';
 import { HeroDetail } from './components/HeroDetail';
 import { Stats } from './components/Stats';
 import { Credits } from './components/Credits';
+import { TeamBuilder } from './components/TeamBuilder';
 import { Settings } from './components/Settings';
+import { statTotal } from './lib/collection';
 import { COLOR_LABEL } from './theme';
 import { useCollection } from './lib/useCollection';
 import { isSupabaseConfigured } from './lib/supabase';
@@ -17,6 +19,7 @@ const COLORS: Color[] = ['red', 'blue', 'green', 'colorless'];
 
 const RAIL = [
   { key: 'heroes', label: 'Héros', icon: 'shield' },
+  { key: 'equipe', label: 'Équipe', icon: 'swords' },
   { key: 'stats', label: 'Stats', icon: 'chart' },
   { key: 'credits', label: 'Crédits', icon: 'credits' },
   { key: 'settings', label: 'Réglages', icon: 'gear' },
@@ -86,8 +89,9 @@ export default function App() {
   const [tab, setTab] = useState('heroes');
   const [selected, setSelected] = useState<Hero | null>(null);
   const [visible, setVisible] = useState(60);
+  const [sortStat, setSortStat] = useState('default');
   const { user, loading: authLoading } = useAuth();
-  const { owned, toggle, refetch } = useCollection(user?.id ?? null);
+  const { owned, stats, toggle, refetch } = useCollection(user?.id ?? null);
   const heroes = useHeroes();
 
   const ownedCount = owned.size;
@@ -108,7 +112,7 @@ export default function App() {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return heroes.filter((h) => {
+    const list = heroes.filter((h) => {
       if (colorFilter && h.color !== colorFilter) return false;
       if (ownFilter === 'owned' && !owned.has(h.id)) return false;
       if (ownFilter === 'missing' && owned.has(h.id)) return false;
@@ -119,7 +123,18 @@ export default function App() {
         h.origin.toLowerCase().includes(q)
       );
     });
-  }, [heroes, query, colorFilter, ownFilter, owned]);
+    if (sortStat !== 'default') {
+      const val = (h: Hero) => {
+        const s = stats.get(h.id);
+        if (!s) return 0;
+        return sortStat === 'total'
+          ? statTotal(s)
+          : ((s[sortStat as keyof typeof s] ?? 0) as number);
+      };
+      list.sort((a, b) => val(b) - val(a));
+    }
+    return list;
+  }, [heroes, query, colorFilter, ownFilter, owned, sortStat, stats]);
 
   useEffect(() => setVisible(60), [query, colorFilter, ownFilter]);
   const shown = filtered.slice(0, visible);
@@ -281,6 +296,14 @@ export default function App() {
 
         {/* Main */}
         <main className="min-w-0 flex-1 overflow-y-auto px-5 pb-12 pt-5 sm:px-8">
+          {tab === 'equipe' && (
+            <TeamBuilder
+              heroes={heroes}
+              owned={owned}
+              stats={stats}
+              onSelectHero={setSelected}
+            />
+          )}
           {tab === 'stats' && <Stats heroes={heroes} owned={owned} />}
           {tab === 'credits' && (
             <Credits heroes={heroes} onSelectHero={setSelected} />
@@ -342,6 +365,22 @@ export default function App() {
                     );
                   })}
                 </div>
+
+                {/* tri par stat de collection */}
+                <select
+                  value={sortStat}
+                  onChange={(e) => setSortStat(e.target.value)}
+                  title="Trier par stat"
+                  className="rounded-lg border border-white/10 bg-black/40 px-2.5 py-1.5 text-[12.5px] text-warm-text outline-none focus:border-gold/50"
+                >
+                  <option value="default">Tri : défaut</option>
+                  <option value="total">Total stats</option>
+                  <option value="ATQ">Attaque</option>
+                  <option value="VIT">Vitesse</option>
+                  <option value="PV">PV</option>
+                  <option value="DEF">Défense</option>
+                  <option value="RES">Résistance</option>
+                </select>
 
                 <div className="text-[13.5px] text-warm-dim">
                   {filtered.length} héros

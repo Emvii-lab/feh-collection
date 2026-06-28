@@ -73,6 +73,37 @@ export async function fetchOwned(): Promise<Set<string>> {
   return readLocal();
 }
 
+// Une ligne de collection = héros possédé + ses stats.
+export type CollRow = { hero_id: string } & CollStats;
+
+// Somme des 5 stats de combat (PV+ATQ+VIT+DÉF+RÉS), le niveau exclu.
+export function statTotal(s: Partial<CollStats> | undefined | null): number {
+  if (!s) return 0;
+  return (
+    (s.PV ?? 0) + (s.ATQ ?? 0) + (s.VIT ?? 0) + (s.DEF ?? 0) + (s.RES ?? 0)
+  );
+}
+
+// Récupère toute la collection de l'utilisateur (hero_id + stats) en une requête.
+export async function fetchCollection(): Promise<CollRow[]> {
+  if (supabase) {
+    const { data, error } = await supabase
+      .from('collection')
+      .select(['hero_id', ...STAT_COLS].join(','));
+    if (!error) return (data ?? []) as unknown as CollRow[];
+    console.warn('Collection indisponible :', error.message);
+  }
+  return [...readLocal()].map((hero_id) => ({
+    hero_id,
+    LVL: null,
+    PV: null,
+    ATQ: null,
+    VIT: null,
+    DEF: null,
+    RES: null,
+  }));
+}
+
 export async function setOwned(
   heroId: string,
   owned: boolean,

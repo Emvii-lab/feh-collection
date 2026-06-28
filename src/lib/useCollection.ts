@@ -1,38 +1,54 @@
 import { useCallback, useEffect, useState } from 'react';
-import { fetchOwned, setOwned as persistOwned } from './collection';
+import {
+  fetchCollection,
+  setOwned as persistOwned,
+  type CollStats,
+} from './collection';
 
-// Gère l'ensemble des héros possédés (de l'utilisateur connecté) avec MAJ optimiste.
+// Gère la collection de l'utilisateur connecté : héros possédés + leurs stats.
 export function useCollection(userId: string | null) {
   const [owned, setOwnedSet] = useState<Set<string>>(new Set());
+  const [stats, setStats] = useState<Map<string, CollStats>>(new Map());
   const [loading, setLoading] = useState(true);
 
-  const refetch = useCallback(() => {
+  const load = useCallback(() => {
     if (!userId) {
       setOwnedSet(new Set());
-      return;
+      setStats(new Map());
+      return Promise.resolve();
     }
-    fetchOwned().then(setOwnedSet);
+    return fetchCollection().then((rows) => {
+      setOwnedSet(new Set(rows.map((r) => r.hero_id)));
+      const m = new Map<string, CollStats>();
+      for (const r of rows) {
+        m.set(r.hero_id, {
+          LVL: r.LVL,
+          PV: r.PV,
+          ATQ: r.ATQ,
+          VIT: r.VIT,
+          DEF: r.DEF,
+          RES: r.RES,
+        });
+      }
+      setStats(m);
+    });
   }, [userId]);
 
-  // Recharge la collection à chaque changement d'utilisateur (connexion/déconnexion).
+  // Recharge à chaque changement d'utilisateur (connexion/déconnexion).
   useEffect(() => {
     let active = true;
     setLoading(true);
-    if (!userId) {
-      setOwnedSet(new Set());
-      setLoading(false);
-      return;
-    }
-    fetchOwned().then((set) => {
-      if (active) {
-        setOwnedSet(set);
-        setLoading(false);
-      }
+    load().finally(() => {
+      if (active) setLoading(false);
     });
     return () => {
       active = false;
     };
-  }, [userId]);
+  }, [load]);
+
+  const refetch = useCallback(() => {
+    void load();
+  }, [load]);
 
   const toggle = useCallback(
     (heroId: string) => {
@@ -41,7 +57,6 @@ export function useCollection(userId: string | null) {
         const willOwn = !next.has(heroId);
         if (willOwn) next.add(heroId);
         else next.delete(heroId);
-        // Persistance en arrière-plan (optimiste), avec l'utilisateur courant.
         persistOwned(heroId, willOwn, userId).catch((e) =>
           console.warn('Persistance collection échouée', e),
         );
@@ -51,5 +66,5 @@ export function useCollection(userId: string | null) {
     [userId],
   );
 
-  return { owned, toggle, loading, refetch };
+  return { owned, stats, toggle, loading, refetch };
 }
