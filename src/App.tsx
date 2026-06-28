@@ -25,6 +25,15 @@ const RAIL = [
   { key: 'settings', label: 'Réglages', icon: 'gear' },
 ] as const;
 
+// Onglets dont l'icône est une image FEH (plaque déjà incluse) → pas de fond feh-btn.
+const RAIL_IMG: Record<string, string> = {
+  heroes: '/feh/ui/button_heroes.png',
+  equipe: '/feh/ui/battle.png',
+  stats: '/feh/ui/stats.png',
+  credits: '/feh/ui/voice_actor.png',
+  settings: '/feh/ui/settings.png',
+};
+
 function RailIcon({ name, color }: { name: string; color: string }) {
   const s = { width: 20, height: 20, stroke: color, fill: 'none', strokeWidth: 2 };
   switch (name) {
@@ -247,37 +256,26 @@ export default function App() {
         <nav className="flex w-[96px] flex-none flex-col items-center gap-2 border-r border-white/[0.06] bg-[rgba(24,17,10,.4)] py-5">
           {RAIL.map((t) => {
             const on = tab === t.key;
+            const img = RAIL_IMG[t.key];
             return (
               <button
                 key={t.key}
                 onClick={() => setTab(t.key)}
-                className={`flex w-[76px] flex-col items-center gap-1.5 py-[11px] transition ${t.key === 'heroes'
-                  ? 'rounded-2xl'
-                  : on
-                    ? 'feh-btn brightness-110'
-                    : 'rounded-2xl hover:bg-white/[0.04]'
-                  }`}
+                className={`flex w-[76px] flex-col items-center gap-1.5 py-[11px] transition ${
+                  img
+                    ? 'rounded-2xl'
+                    : on
+                      ? 'feh-btn brightness-110'
+                      : 'rounded-2xl hover:bg-white/[0.04]'
+                }`}
               >
-                {t.key === 'heroes' ? (
+                {img ? (
                   <img
-                    src="/feh/ui/heroes_btn.png"
+                    src={img}
                     alt=""
-                    className={`h-11 w-11 transition ${on ? '' : 'opacity-55 grayscale hover:opacity-80'
-                      }`}
-                  />
-                ) : t.key === 'credits' ? (
-                  <img
-                    src="/feh/ui/voice_actor.png"
-                    alt=""
-                    className={`h-11 w-11 object-contain transition ${on ? '' : 'opacity-55 grayscale hover:opacity-80'
-                      }`}
-                  />
-                ) : t.key === 'equipe' ? (
-                  <img
-                    src="/feh/ui/battle.png"
-                    alt=""
-                    className={`h-11 w-11 object-contain transition ${on ? '' : 'opacity-55 grayscale hover:opacity-80'
-                      }`}
+                    className={`h-11 w-11 object-contain transition ${
+                      on ? '' : 'opacity-55 grayscale hover:opacity-80'
+                    }`}
                   />
                 ) : (
                   <RailIcon name={t.icon} color={on ? '#eaf6ff' : '#94866c'} />
