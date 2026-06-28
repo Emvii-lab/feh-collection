@@ -147,7 +147,12 @@ export function TeamBuilder({
       <div className="rounded-2xl border border-white/10 bg-[rgba(20,15,9,.55)] p-5 shadow-card">
         <div className="mb-4 flex flex-wrap items-end gap-3">
           <h3 className="mr-auto font-feh text-[15px] font-semibold tracking-wide text-gold-text">
-            Classement ({ranked.length})
+            Top 10
+            {ranked.length > 10 ? (
+              <span className="ml-1 text-[12px] font-normal text-warm-mute">
+                / {ranked.length} possédés
+              </span>
+            ) : null}
           </h3>
           <Select label="Trier par" value={metric} onChange={setMetric}>
             {METRICS.map((m) => (
@@ -183,7 +188,7 @@ export function TeamBuilder({
         </div>
 
         <div className="space-y-1.5">
-          {ranked.map((e, i) => (
+          {ranked.slice(0, 10).map((e, i) => (
             <button
               key={e.hero.id}
               onClick={() => onSelectHero(e.hero)}
