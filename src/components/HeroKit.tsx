@@ -43,6 +43,24 @@ function weaponReason(w: SkillRow): string[] {
   return r;
 }
 
+// Sceau (S) conseillé selon le profil — conseil méta (les sceaux sont universels,
+// se forgent et s'équipent sur n'importe quel héros ; non liés au kit).
+function sealReco(s: CollStats | null): { name: string; why: string } | null {
+  if (!s || s.ATQ == null || s.VIT == null || s.DEF == null || s.RES == null)
+    return null;
+  const { ATQ, VIT, DEF, RES } = s;
+  const max = Math.max(ATQ, VIT, DEF, RES);
+  if (max === ATQ)
+    return VIT >= ATQ - 5
+      ? { name: 'Flashing Blade', why: 'charge la spéciale quand ta VIT dépasse celle de l’ennemi' }
+      : { name: 'Heavy Blade', why: 'charge la spéciale quand ton ATQ dépasse celle de l’ennemi' };
+  if (max === VIT)
+    return { name: 'Darting Blow', why: '+VIT à l’initiation → tu doubles plus facilement' };
+  if (max === DEF)
+    return { name: 'Quick Riposte', why: 'double garanti en défense (sinon Close Def)' };
+  return { name: 'Quick Riposte', why: 'double garanti en défense (sinon Distant Def côté magie)' };
+}
+
 // Orientation de build à partir des stats de collection (si saisies).
 function orientation(s: CollStats | null): string | null {
   if (!s || s.ATQ == null || s.VIT == null || s.DEF == null || s.RES == null)
@@ -112,13 +130,30 @@ export function HeroKit({
   }
 
   const advice = orientation(stats);
+  const seal = sealReco(stats);
 
   return (
     <div className="space-y-4 px-5 pb-5 pt-3">
       {advice ? (
-        <div className="rounded-lg border border-gold-deep/40 bg-gold/[0.06] px-3 py-2 text-[12.5px] text-warm-text">
-          <span className="font-feh font-semibold text-gold-text">Conseil : </span>
-          {advice}
+        <div className="space-y-2">
+          <div className="rounded-lg border border-gold-deep/40 bg-gold/[0.06] px-3 py-2 text-[12.5px] text-warm-text">
+            <span className="font-feh font-semibold text-gold-text">
+              Conseil :{' '}
+            </span>
+            {advice}
+          </div>
+          {seal ? (
+            <div className="rounded-lg border border-white/10 bg-black/25 px-3 py-2 text-[12.5px] text-warm-dim">
+              <span className="font-feh font-semibold text-gold-text">
+                Sceau (S) conseillé :{' '}
+              </span>
+              <span className="text-warm-text">{seal.name}</span> — {seal.why}.
+              <span className="text-warm-mute">
+                {' '}
+                (Sceau universel : à forger/équiper sur n'importe quel héros.)
+              </span>
+            </div>
+          ) : null}
         </div>
       ) : (
         <p className="text-[11.5px] text-warm-mute">
