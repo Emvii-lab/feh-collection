@@ -3,6 +3,8 @@ import type { Hero } from '../types';
 import { MoveIcon, RarityStars, WeaponIcon } from './icons';
 import { useHeroVoices, type HeroVoices } from '../lib/useHeroVoices';
 import { CollectionStats } from './CollectionStats';
+import { HeroKit } from './HeroKit';
+import { useHeroSkills } from '../lib/useHeroSkills';
 
 const GOLD_GRAD = 'linear-gradient(90deg,#b78a2e,#ffd166 70%,#fff3cf)';
 
@@ -67,10 +69,14 @@ export function HeroDetail({
   const [artIndex, setArtIndex] = useState(0);
 
   // Onglet bas de modal : stats ou voix (voix chargées à la demande).
-  const [detailTab, setDetailTab] = useState<'stats' | 'voix'>('stats');
+  const [detailTab, setDetailTab] = useState<'stats' | 'kit' | 'voix'>('stats');
   const { voices, loading: voicesLoading } = useHeroVoices(
     hero.id,
     detailTab === 'voix',
+  );
+  const { skills, loading: skillsLoading } = useHeroSkills(
+    hero.id,
+    detailTab === 'kit',
   );
 
   const toggleResplendent = () => {
@@ -271,7 +277,7 @@ export function HeroDetail({
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto pt-3 md:shadow-[inset_10px_0_16px_-10px_rgba(0,0,0,0.55)]">
         {/* onglets : Stats / Voix */}
         <div className="flex gap-2 px-5 pt-3">
-          {(['stats', 'voix'] as const).map((t) => (
+          {(['stats', 'kit', 'voix'] as const).map((t) => (
             <button
               key={t}
               onClick={() => setDetailTab(t)}
@@ -281,7 +287,7 @@ export function HeroDetail({
                   : 'opacity-60 grayscale-[.35] hover:opacity-85'
               }`}
             >
-              {t === 'stats' ? 'Stats' : 'Voix'}
+              {t === 'stats' ? 'Stats' : t === 'kit' ? 'Compétences' : 'Voix'}
             </button>
           ))}
         </div>
@@ -293,8 +299,11 @@ export function HeroDetail({
             onSaved={onSaved}
           />
         ) : (
+          detailTab === 'kit' ? (
+          <HeroKit skills={skills} loading={skillsLoading} />
+        ) : (
           <VoiceTab voices={voices} loading={voicesLoading} />
-        )}
+        ))}
         </div>
       </div>
 
