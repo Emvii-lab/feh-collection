@@ -89,22 +89,24 @@ function weaponReason(w: SkillRow): string[] {
   return r;
 }
 
-// Sceau (S) conseillé selon le profil — conseil méta (les sceaux sont universels,
-// se forgent et s'équipent sur n'importe quel héros ; non liés au kit).
+// Sceau (S) conseillé selon le profil — UNIQUEMENT des sceaux forgeables à la
+// Forge sacré (noms FR in-game). Les accélérateurs de spéciale (Lame lourde,
+// Lame miroitante…) ne sont PAS forgeables : anciennes récompenses d'events,
+// donc jamais conseillés ici pour rester obtenables.
 function sealReco(s: CollStats | null): { name: string; why: string } | null {
   if (!s || s.ATQ == null || s.VIT == null || s.DEF == null || s.RES == null)
     return null;
   const { ATQ, VIT, DEF, RES } = s;
   const max = Math.max(ATQ, VIT, DEF, RES);
   if (max === ATQ)
-    return VIT >= ATQ - 5
-      ? { name: 'Flashing Blade', why: 'charge la spéciale quand ta VIT dépasse celle de l’ennemi' }
-      : { name: 'Heavy Blade', why: 'charge la spéciale quand ton ATQ dépasse celle de l’ennemi' };
+    return VIT >= ATQ - 8
+      ? { name: 'Atq/Vit', why: 'boost ATQ + VIT en continu — sécurise tes doublons' }
+      : { name: 'Atq/Déf', why: 'boost ATQ + DÉF en continu — tu tapes fort et encaisses la riposte' };
   if (max === VIT)
-    return { name: 'Darting Blow', why: '+VIT à l’initiation → tu doubles plus facilement' };
+    return { name: 'Atq/Vit', why: 'boost ATQ + VIT en continu — double et évite d’être doublé' };
   if (max === DEF)
-    return { name: 'Quick Riposte', why: 'double garanti en défense (sinon Close Def)' };
-  return { name: 'Quick Riposte', why: 'double garanti en défense (sinon Distant Def côté magie)' };
+    return { name: 'Déf proche', why: 'réduit les dégâts des ennemis au corps à corps' };
+  return { name: 'Résistance +2', why: 'RÉS en plus pour encaisser la magie' };
 }
 
 // Orientation de build à partir des stats de collection (si saisies).
@@ -116,13 +118,13 @@ function orientation(s: CollStats | null): string | null {
   if (max === ATQ) {
     const slow = VIT < ATQ - 8;
     return `Profil offensif (grosse ATQ). Arme puissante + spéciale de dégâts.${
-      slow ? ' VIT limitée → un follow-up garanti (Quick Riposte/Bold Fighter) fiabilise les kills.' : ''
+      slow ? ' VIT limitée → un skill B de doublon garanti (type Riposte prompte) fiabilise les kills.' : ''
     }`;
   }
   if (max === VIT)
     return 'Profil rapide (grosse VIT). Joue la vitesse : double l’ennemi et évite d’être doublé (skills de VIT, esquive).';
   if (max === DEF)
-    return 'Profil tank physique (grosse DÉF). Contre à distance + Quick Riposte, spéciale défensive.';
+    return 'Profil tank physique (grosse DÉF). Contre à distance + doublon garanti, spéciale défensive.';
   return 'Profil tank magique (grosse RÉS). Encaisse la magie ; contre à distance + spéciale défensive.';
 }
 
@@ -230,7 +232,7 @@ export function HeroKit({
               <span className="text-warm-text">{seal.name}</span> — {seal.why}.
               <span className="text-warm-mute">
                 {' '}
-                (Sceau universel : à forger/équiper sur n'importe quel héros.)
+                (Forgeable à la Forge sacré, puis à assigner via « Assigner sceaux ».)
               </span>
             </div>
           ) : null}
