@@ -1,6 +1,35 @@
 import { useEffect, useState } from 'react';
 import type { SkillRow } from '../lib/useHeroSkills';
 import { fetchHeroStats, type CollStats } from '../lib/collection';
+import { supabase } from '../lib/supabase';
+
+const REFINE_LABEL: Record<string, string> = {
+  atk: 'ATQ',
+  spd: 'VIT',
+  def: 'DÉF',
+  res: 'RÉS',
+};
+
+// Raffinage conseillé (atelier d'armement) : selon le profil + les raffinages dispo de l'arme.
+function refineAdvice(s: CollStats | null, paths: string[]): string | null {
+  if (paths.length === 0) return null;
+  const hasEffect = paths.some((p) => p.startsWith('skill'));
+  if (s && s.ATQ != null && s.VIT != null && s.DEF != null && s.RES != null) {
+    const max = Math.max(s.ATQ, s.VIT, s.DEF, s.RES);
+    const want =
+      max === s.ATQ ? 'atk' : max === s.VIT ? 'spd' : max === s.DEF ? 'def' : 'res';
+    if (paths.includes(want))
+      return (
+        `raffinage ${REFINE_LABEL[want]}` +
+        (hasEffect ? ' (ou le raffinage à effet, souvent le meilleur sur une arme PRF)' : '')
+      );
+  }
+  const stat = paths.filter((p) => REFINE_LABEL[p]).map((p) => REFINE_LABEL[p]);
+  const parts: string[] = [];
+  if (stat.length) parts.push('stat : ' + stat.join('/'));
+  if (hasEffect) parts.push('effet');
+  return parts.length ? 'raffinable — ' + parts.join(' · ') : null;
+}
 
 const CATS: { key: string; label: string }[] = [
   { key: 'weapon', label: 'Armes' },
@@ -10,6 +39,9 @@ const CATS: { key: string; label: string }[] = [
   { key: 'passiveb', label: 'Passif B' },
   { key: 'passivec', label: 'Passif C' },
 ];
+const CAT_LABEL: Record<string, string> = Object.fromEntries(
+  CATS.map((c) => [c.key, c.label]),
+);
 
 // Nettoie le wikitext des descriptions.
 function cleanWiki(t: string | null): string {
@@ -20,6 +52,20 @@ function cleanWiki(t: string | null): string {
     .replace(/<br\s*\/?>/gi, ' ')
     .replace(/''+/g, '')
     .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Version multiligne : les <br> deviennent de vrais retours à la ligne (pour l'affichage complet).
+function cleanWikiML(t: string | null): string {
+  if (!t) return '';
+  return t
+    .replace(/\[\[(?:[^\]|]*\|)?([^\]]*)\]\]/g, '$1')
+    .replace(/\{\{[^}]*\}\}/g, '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/''+/g, '')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/[ \t]*\n[ \t]*/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
 
@@ -90,6 +136,7 @@ export function HeroKit({
   heroId: string;
 }) {
   const [stats, setStats] = useState<CollStats | null>(null);
+  const [detail, setDetail] = useState<SkillRow | null>(null);
   useEffect(() => {
     let active = true;
     fetchHeroStats(heroId).then((s) => active && setStats(s));
@@ -97,6 +144,37 @@ export function HeroKit({
       active = false;
     };
   }, [heroId]);
+
+  // Raffinages disponibles pour la meilleure arme du héros.
+  const [refinePaths, setRefinePaths] = useState<string[]>([]);
+  useEffect(() => {
+    const ws = (skills ?? []).filter((s) => s.scategory === 'weapon');
+    if (!supabase || ws.length === 0) {
+      setRefinePaths([]);
+      return;
+    }
+    const best = ws.reduce((a, b) => (effMight(b) > effMight(a) ? b : a));
+    let active = true;
+    supabase
+      .from('skills')
+      .select('refine_path')
+      .eq('scategory', 'weapon')
+      .eq('name', best.name)
+      .not('refine_path', 'is', null)
+      .then(({ data }) => {
+        if (active)
+          setRefinePaths([
+            ...new Set(
+              (data ?? [])
+                .map((r) => r.refine_path as string)
+                .filter(Boolean),
+            ),
+          ]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [skills]);
 
   if (loading) {
     return (
@@ -131,8 +209,10 @@ export function HeroKit({
 
   const advice = orientation(stats);
   const seal = sealReco(stats);
+  const refineText = refineAdvice(stats, refinePaths);
 
   return (
+    <>
     <div className="space-y-4 px-5 pb-5 pt-3">
       {advice ? (
         <div className="space-y-2">
@@ -162,6 +242,19 @@ export function HeroKit({
         </p>
       )}
 
+      {refineText ? (
+        <div className="rounded-lg border border-white/10 bg-black/25 px-3 py-2 text-[12.5px] text-warm-dim">
+          <span className="font-feh font-semibold text-gold-text">
+            Raffinage conseillé :{' '}
+          </span>
+          <span className="text-warm-text">{refineText}</span>.
+          <span className="text-warm-mute">
+            {' '}
+            (Atelier d'armement : améliore la meilleure arme ci-dessous.)
+          </span>
+        </div>
+      ) : null}
+
       {CATS.map((cat) => {
         let list = skills.filter((s) => s.scategory === cat.key);
         if (list.length === 0) return null;
@@ -185,13 +278,23 @@ export function HeroKit({
                 return (
                   <div
                     key={s.wiki_name}
-                    className={`rounded-lg border px-3 py-2 ${
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setDetail(s)}
+                    className={`cursor-pointer rounded-lg border px-3 py-2 transition hover:brightness-110 ${
                       highlight
                         ? 'border-gold/50 bg-gold/[0.08]'
                         : 'border-white/10 bg-black/25'
                     }`}
                   >
                     <div className="flex items-center gap-2">
+                      {s.scategory_url ? (
+                        <img
+                          src={s.scategory_url}
+                          alt=""
+                          className="h-6 w-6 shrink-0 object-contain drop-shadow-[0_1px_2px_rgba(0,0,0,.5)]"
+                        />
+                      ) : null}
                       <span className="truncate text-[13px] font-semibold text-warm-text">
                         {s.name}
                       </span>
@@ -206,9 +309,12 @@ export function HeroKit({
                         </span>
                       ) : null}
                       <span className="ml-auto shrink-0 font-feh text-[11px] text-warm-mute">
-                        {s.might != null ? `Pv. ${s.might}` : ''}
-                        {s.cooldown != null ? `CD ${s.cooldown}` : ''}
-                        {s.sp != null ? ` · ${s.sp} SP` : ''}
+                        {[
+                          s.might != null ? `Dmg ${s.might}` : null,
+                          s.cooldown != null ? `CD ${s.cooldown}` : null,
+                        ]
+                          .filter(Boolean)
+                          .join(' · ')}
                       </span>
                     </div>
                     {reasons.length ? (
@@ -232,5 +338,54 @@ export function HeroKit({
         );
       })}
     </div>
+
+    {detail ? (
+      <div
+        className="fixed inset-0 z-[70] flex items-center justify-center bg-black/75 p-4"
+        onClick={() => setDetail(null)}
+      >
+        <div
+          className="max-h-[80vh] w-full max-w-md overflow-y-auto rounded-2xl border border-gold/40 bg-[#33291a] p-5 font-feh shadow-[0_20px_60px_-15px_rgba(0,0,0,0.8)]"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="mb-3 flex items-center gap-3">
+            {detail.scategory_url ? (
+              <img
+                src={detail.scategory_url}
+                alt=""
+                className="h-9 w-9 shrink-0 object-contain"
+              />
+            ) : null}
+            <div className="min-w-0">
+              <div className="truncate font-feh text-[16px] font-bold text-warm-head">
+                {detail.name}
+              </div>
+              <div className="text-[11px] text-warm-mute">
+                {CAT_LABEL[detail.scategory] ?? detail.scategory}
+                {detail.might != null ? ` · Dmg ${detail.might}` : ''}
+                {detail.cooldown != null ? ` · CD ${detail.cooldown}` : ''}
+                {detail.sp != null ? ` · ${detail.sp} SP` : ''}
+              </div>
+            </div>
+            <button
+              onClick={() => setDetail(null)}
+              className="ml-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-black/40 text-warm-text hover:bg-black/60"
+              aria-label="Fermer"
+            >
+              ✕
+            </button>
+          </div>
+          {detail.weapon_effectiveness ? (
+            <div className="mb-2 text-[12px] text-emerald-300/90">
+              Efficace vs {cleanWiki(detail.weapon_effectiveness)}
+            </div>
+          ) : null}
+          <p className="whitespace-pre-line text-[13px] leading-relaxed text-warm-dim">
+            {cleanWikiML(detail.description) || 'Aucune description.'}
+          </p>
+        </div>
+      </div>
+    ) : null}
+    </>
   );
 }

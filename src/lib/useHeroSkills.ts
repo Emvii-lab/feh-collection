@@ -11,6 +11,7 @@ export type SkillRow = {
   cooldown: number | null;
   description: string | null;
   weapon_effectiveness: string | null;
+  scategory_url: string | null;
   skill_pos: number | null;
 };
 
@@ -44,7 +45,7 @@ export function useHeroSkills(heroId: string | null, enabled = true) {
       const { data: sk } = await supabase
         .from('skills')
         .select(
-          'wiki_name,name,scategory,use_range,might,sp,cooldown,description,weapon_effectiveness',
+          'wiki_name,name,scategory,use_range,might,sp,cooldown,description,weapon_effectiveness,scategory_url',
         )
         .in('wiki_name', names);
       const rows = (sk ?? []).map((s) => ({
