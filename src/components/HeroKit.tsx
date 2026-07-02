@@ -93,20 +93,24 @@ function weaponReason(w: SkillRow): string[] {
 // Forge sacré (noms FR in-game). Les accélérateurs de spéciale (Lame lourde,
 // Lame miroitante…) ne sont PAS forgeables : anciennes récompenses d'events,
 // donc jamais conseillés ici pour rester obtenables.
-function sealReco(s: CollStats | null): { name: string; why: string } | null {
+// key = wiki_name du sceau dans feh.skills (pour récupérer nom FR + icône scategory_url) ;
+// label = repli affiché si la ligne n'est pas (encore) trouvée en base.
+function sealReco(
+  s: CollStats | null,
+): { key: string; label: string; why: string } | null {
   if (!s || s.ATQ == null || s.VIT == null || s.DEF == null || s.RES == null)
     return null;
   const { ATQ, VIT, DEF, RES } = s;
   const max = Math.max(ATQ, VIT, DEF, RES);
   if (max === ATQ)
     return VIT >= ATQ - 8
-      ? { name: 'Atq/Vit', why: 'boost ATQ + VIT en continu — sécurise tes doublons' }
-      : { name: 'Atq/Déf', why: 'boost ATQ + DÉF en continu — tu tapes fort et encaisses la riposte' };
+      ? { key: 'AtkSpd 2', label: 'Atq/Vit', why: 'boost ATQ + VIT en continu — sécurise tes doublons' }
+      : { key: 'AttackDef Plus2', label: 'Atq/Déf +2', why: 'boost ATQ + DÉF en continu — tu tapes fort et encaisses la riposte' };
   if (max === VIT)
-    return { name: 'Atq/Vit', why: 'boost ATQ + VIT en continu — double et évite d’être doublé' };
+    return { key: 'AtkSpd 2', label: 'Atq/Vit', why: 'boost ATQ + VIT en continu — double et évite d’être doublé' };
   if (max === DEF)
-    return { name: 'Déf proche', why: 'réduit les dégâts des ennemis au corps à corps' };
-  return { name: 'Résistance +2', why: 'RÉS en plus pour encaisser la magie' };
+    return { key: 'Close Def 3', label: 'Déf proche', why: 'réduit les dégâts des ennemis au corps à corps' };
+  return { key: 'Resistance Plus2', label: 'Résistance +2', why: 'RÉS en plus pour encaisser la magie' };
 }
 
 // Orientation de build à partir des stats de collection (si saisies).
@@ -178,6 +182,35 @@ export function HeroKit({
     };
   }, [skills]);
 
+  // Ligne DB du sceau conseillé (nom FR + icône), suit les traductions ajoutées en base.
+  const [sealRow, setSealRow] = useState<{
+    name: string | null;
+    scategory_url: string | null;
+  } | null>(null);
+  useEffect(() => {
+    const key = sealReco(stats)?.key;
+    if (!supabase || !key) {
+      setSealRow(null);
+      return;
+    }
+    let active = true;
+    supabase
+      .from('skills')
+      .select('name,scategory_url')
+      .eq('wiki_name', key)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (active)
+          setSealRow(
+            (data as { name: string | null; scategory_url: string | null } | null) ??
+              null,
+          );
+      });
+    return () => {
+      active = false;
+    };
+  }, [stats]);
+
   if (loading) {
     return (
       <p className="px-5 pb-5 pt-3 text-sm text-warm-dim">Chargement du kit…</p>
@@ -229,7 +262,14 @@ export function HeroKit({
               <span className="font-feh font-semibold text-gold-text">
                 Sceau (S) conseillé :{' '}
               </span>
-              <span className="text-warm-text">{seal.name}</span> — {seal.why}.
+              {sealRow?.scategory_url ? (
+                <img
+                  src={sealRow.scategory_url}
+                  alt=""
+                  className="mr-1 inline-block h-5 w-5 align-text-bottom object-contain drop-shadow-[0_1px_1px_rgba(0,0,0,0.6)]"
+                />
+              ) : null}
+              <span className="text-warm-text">{sealRow?.name ?? seal.label}</span> — {seal.why}.
               <span className="text-warm-mute">
                 {' '}
                 (Forgeable à la Forge sacré, puis à assigner via « Assigner sceaux ».)
