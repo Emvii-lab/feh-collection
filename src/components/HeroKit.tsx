@@ -1,4 +1,6 @@
+import { useEffect, useState } from 'react';
 import type { SkillRow } from '../lib/useHeroSkills';
+import { fetchHeroStats, type CollStats } from '../lib/collection';
 
 const CATS: { key: string; label: string }[] = [
   { key: 'weapon', label: 'Armes' },
@@ -9,7 +11,7 @@ const CATS: { key: string; label: string }[] = [
   { key: 'passivec', label: 'Passif C' },
 ];
 
-// Nettoie le wikitext des descriptions ([[..]], {{..}}, <br>, ''gras''…).
+// Nettoie le wikitext des descriptions.
 function cleanWiki(t: string | null): string {
   if (!t) return '';
   return t
@@ -21,13 +23,63 @@ function cleanWiki(t: string | null): string {
     .trim();
 }
 
+const isBrave = (d: string | null) => /attacks?\s+twice|brave/i.test(d ?? '');
+const isSlaying = (d: string | null) =>
+  /accelerates special|slaying|special cooldown charge/i.test(d ?? '');
+
+// Puissance "effective" d'une arme (heuristique) : Brave ≈ ×2 coups, + bonus efficacité / slaying.
+function effMight(w: SkillRow): number {
+  let m = w.might ?? 0;
+  if (isBrave(w.description)) m *= 1.9;
+  if (w.weapon_effectiveness) m += 3;
+  if (isSlaying(w.description)) m += 2;
+  return Math.round(m);
+}
+function weaponReason(w: SkillRow): string[] {
+  const r: string[] = [];
+  if (isBrave(w.description)) r.push('×2 attaques');
+  if (w.weapon_effectiveness) r.push('efficace vs ' + cleanWiki(w.weapon_effectiveness));
+  if (isSlaying(w.description)) r.push('spéciale accélérée');
+  return r;
+}
+
+// Orientation de build à partir des stats de collection (si saisies).
+function orientation(s: CollStats | null): string | null {
+  if (!s || s.ATQ == null || s.VIT == null || s.DEF == null || s.RES == null)
+    return null;
+  const { ATQ, VIT, DEF, RES } = s;
+  const max = Math.max(ATQ, VIT, DEF, RES);
+  if (max === ATQ) {
+    const slow = VIT < ATQ - 8;
+    return `Profil offensif (grosse ATQ). Arme puissante + spéciale de dégâts.${
+      slow ? ' VIT limitée → un follow-up garanti (Quick Riposte/Bold Fighter) fiabilise les kills.' : ''
+    }`;
+  }
+  if (max === VIT)
+    return 'Profil rapide (grosse VIT). Joue la vitesse : double l’ennemi et évite d’être doublé (skills de VIT, esquive).';
+  if (max === DEF)
+    return 'Profil tank physique (grosse DÉF). Contre à distance + Quick Riposte, spéciale défensive.';
+  return 'Profil tank magique (grosse RÉS). Encaisse la magie ; contre à distance + spéciale défensive.';
+}
+
 export function HeroKit({
   skills,
   loading,
+  heroId,
 }: {
   skills: SkillRow[] | null;
   loading: boolean;
+  heroId: string;
 }) {
+  const [stats, setStats] = useState<CollStats | null>(null);
+  useEffect(() => {
+    let active = true;
+    fetchHeroStats(heroId).then((s) => active && setStats(s));
+    return () => {
+      active = false;
+    };
+  }, [heroId]);
+
   if (loading) {
     return (
       <p className="px-5 pb-5 pt-3 text-sm text-warm-dim">Chargement du kit…</p>
@@ -41,23 +93,47 @@ export function HeroKit({
     );
   }
 
-  // Meilleure arme = plus grosse puissance de base parmi les armes du kit.
+  // Meilleure arme = plus grosse puissance effective.
   const weapons = skills.filter((s) => s.scategory === 'weapon');
   const bestWeapon =
     weapons.length > 0
-      ? weapons.reduce((a, b) => ((b.might ?? 0) > (a.might ?? 0) ? b : a))
+      ? weapons.reduce((a, b) => (effMight(b) > effMight(a) ? b : a))
       : null;
+
+  // Compétence conseillée par slot = palier le plus haut (SP max) de chaque catégorie non-arme.
+  const bestPerSlot = new Map<string, string>(); // scategory -> wiki_name
+  for (const cat of CATS) {
+    if (cat.key === 'weapon') continue;
+    const list = skills.filter((s) => s.scategory === cat.key);
+    if (list.length) {
+      const top = list.reduce((a, b) => ((b.sp ?? 0) > (a.sp ?? 0) ? b : a));
+      bestPerSlot.set(cat.key, top.wiki_name);
+    }
+  }
+
+  const advice = orientation(stats);
 
   return (
     <div className="space-y-4 px-5 pb-5 pt-3">
+      {advice ? (
+        <div className="rounded-lg border border-gold-deep/40 bg-gold/[0.06] px-3 py-2 text-[12.5px] text-warm-text">
+          <span className="font-feh font-semibold text-gold-text">Conseil : </span>
+          {advice}
+        </div>
+      ) : (
+        <p className="text-[11.5px] text-warm-mute">
+          Astuce : saisis les stats du héros (onglet Stats) pour un conseil de
+          build adapté à son profil.
+        </p>
+      )}
+
       {CATS.map((cat) => {
         let list = skills.filter((s) => s.scategory === cat.key);
-        if (cat.key === 'weapon') {
-          list = [...list].sort((a, b) => (b.might ?? 0) - (a.might ?? 0));
-        } else {
-          list = [...list].sort((a, b) => (a.sp ?? 0) - (b.sp ?? 0));
-        }
         if (list.length === 0) return null;
+        list =
+          cat.key === 'weapon'
+            ? [...list].sort((a, b) => effMight(b) - effMight(a))
+            : [...list].sort((a, b) => (a.sp ?? 0) - (b.sp ?? 0));
         return (
           <div key={cat.key}>
             <h4 className="mb-1.5 font-feh text-[13px] font-semibold text-gold-text">
@@ -66,11 +142,16 @@ export function HeroKit({
             <div className="space-y-1.5">
               {list.map((s) => {
                 const isBest = cat.key === 'weapon' && s === bestWeapon;
+                const isReco =
+                  cat.key !== 'weapon' &&
+                  bestPerSlot.get(cat.key) === s.wiki_name;
+                const highlight = isBest || isReco;
+                const reasons = cat.key === 'weapon' ? weaponReason(s) : [];
                 return (
                   <div
                     key={s.wiki_name}
                     className={`rounded-lg border px-3 py-2 ${
-                      isBest
+                      highlight
                         ? 'border-gold/50 bg-gold/[0.08]'
                         : 'border-white/10 bg-black/25'
                     }`}
@@ -84,15 +165,20 @@ export function HeroKit({
                           ★ Meilleure arme
                         </span>
                       ) : null}
+                      {isReco ? (
+                        <span className="shrink-0 rounded-full bg-gold/20 px-2 py-0.5 font-feh text-[10px] font-bold text-gold-light">
+                          ✓ Conseillé
+                        </span>
+                      ) : null}
                       <span className="ml-auto shrink-0 font-feh text-[11px] text-warm-mute">
                         {s.might != null ? `Pv. ${s.might}` : ''}
                         {s.cooldown != null ? `CD ${s.cooldown}` : ''}
                         {s.sp != null ? ` · ${s.sp} SP` : ''}
                       </span>
                     </div>
-                    {s.weapon_effectiveness ? (
+                    {reasons.length ? (
                       <div className="mt-0.5 text-[11px] text-emerald-300/90">
-                        Efficace vs {cleanWiki(s.weapon_effectiveness)}
+                        {reasons.join(' · ')}
                       </div>
                     ) : null}
                     {s.description ? (

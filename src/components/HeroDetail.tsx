@@ -300,7 +300,7 @@ export function HeroDetail({
           />
         ) : (
           detailTab === 'kit' ? (
-          <HeroKit skills={skills} loading={skillsLoading} />
+          <HeroKit skills={skills} loading={skillsLoading} heroId={hero.id} />
         ) : (
           <VoiceTab voices={voices} loading={voicesLoading} />
         ))}
