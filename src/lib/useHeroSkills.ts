@@ -11,6 +11,7 @@ export type SkillRow = {
   cooldown: number | null;
   description: string | null;
   weapon_effectiveness: string | null;
+  weapon_effectiveness_url: string | null;
   scategory_url: string | null;
   skill_pos: number | null;
   unlock_rarity: number | null; // rareté (étoiles) à laquelle le héros débloque la compétence
@@ -50,7 +51,7 @@ export function useHeroSkills(heroId: string | null, enabled = true) {
       const { data: sk } = await supabase
         .from('skills')
         .select(
-          'wiki_name,name,scategory,use_range,might,sp,cooldown,description,weapon_effectiveness,scategory_url',
+          'wiki_name,name,scategory,use_range,might,sp,cooldown,description,weapon_effectiveness,weapon_effectiveness_url,scategory_url',
         )
         .in('wiki_name', names);
       const rows = (sk ?? []).map((s) => {

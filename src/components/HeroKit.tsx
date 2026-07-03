@@ -84,9 +84,30 @@ function effMight(w: SkillRow): number {
 function weaponReason(w: SkillRow): string[] {
   const r: string[] = [];
   if (isBrave(w.description)) r.push('×2 attaques');
-  if (w.weapon_effectiveness) r.push('efficace vs ' + cleanWiki(w.weapon_effectiveness));
   if (isSlaying(w.description)) r.push('spéciale accélérée');
   return r;
+}
+
+// Ligne d'efficacité d'arme : libellé « Eff » + icône (weapon_effectiveness_url),
+// repli sur le texte « vs … » si pas d'icône renseignée.
+function WeaponEff({ w, size }: { w: SkillRow; size: number }) {
+  if (!w.weapon_effectiveness) return null;
+  const label = cleanWiki(w.weapon_effectiveness);
+  return (
+    <span className="inline-flex items-center gap-1 text-emerald-300/90" title={`Efficace vs ${label}`}>
+      Eff
+      {w.weapon_effectiveness_url ? (
+        <img
+          src={w.weapon_effectiveness_url}
+          alt={label}
+          style={{ height: size, width: size }}
+          className="object-contain drop-shadow-[0_1px_2px_rgba(0,0,0,.5)]"
+        />
+      ) : (
+        <span>vs {label}</span>
+      )}
+    </span>
+  );
 }
 
 // Sceau (S) conseillé selon le profil — UNIQUEMENT des sceaux forgeables à la
@@ -379,9 +400,10 @@ export function HeroKit({
                         </span>
                       </div>
                     </div>
-                    {reasons.length ? (
-                      <div className="mt-0.5 text-[11px] text-emerald-300/90">
-                        {reasons.join(' · ')}
+                    {reasons.length || s.weapon_effectiveness ? (
+                      <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-emerald-300/90">
+                        {reasons.length ? <span>{reasons.join(' · ')}</span> : null}
+                        <WeaponEff w={s} size={16} />
                       </div>
                     ) : null}
                     {s.description ? (
@@ -444,8 +466,8 @@ export function HeroKit({
             </button>
           </div>
           {detail.weapon_effectiveness ? (
-            <div className="mb-2 text-[12px] text-emerald-300/90">
-              Efficace vs {cleanWiki(detail.weapon_effectiveness)}
+            <div className="mb-2 flex items-center gap-1.5 text-[12px]">
+              <WeaponEff w={detail} size={20} />
             </div>
           ) : null}
           <p className="whitespace-pre-line text-[13px] leading-relaxed text-warm-dim">
