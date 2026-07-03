@@ -311,7 +311,7 @@ export function HeroKit({
         list =
           cat.key === 'weapon'
             ? [...list].sort((a, b) => effMight(b) - effMight(a))
-            : [...list].sort((a, b) => (a.sp ?? 0) - (b.sp ?? 0));
+            : [...list].sort((a, b) => (b.sp ?? 0) - (a.sp ?? 0));
         return (
           <div key={cat.key}>
             <h4 className="mb-1.5 font-feh text-[13px] font-semibold text-gold-text">
