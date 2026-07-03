@@ -380,7 +380,6 @@ export function HeroKit({
                         </span>
                       ) : null}
                       <div className="ml-auto flex shrink-0 items-center gap-2">
-                        <WeaponEff w={s} size={16} />
                         {s.unlock_rarity ? (
                           <span
                             title={`Se débloque à ${s.unlock_rarity}★`}
@@ -399,6 +398,7 @@ export function HeroKit({
                             .filter(Boolean)
                             .join(' · ')}
                         </span>
+                        <WeaponEff w={s} size={16} />
                       </div>
                     </div>
                     {reasons.length ? (
