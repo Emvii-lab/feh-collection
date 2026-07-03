@@ -94,7 +94,7 @@ function WeaponEff({ w, size }: { w: SkillRow; size: number }) {
   if (!w.weapon_effectiveness) return null;
   const label = cleanWiki(w.weapon_effectiveness);
   return (
-    <span className="inline-flex items-center gap-1 text-emerald-300/90" title={`Efficace vs ${label}`}>
+    <span className="inline-flex items-center gap-1 font-feh text-[11px] text-emerald-300/90" title={`Efficace vs ${label}`}>
       Eff
       {w.weapon_effectiveness_url ? (
         <img
