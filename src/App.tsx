@@ -93,8 +93,16 @@ function RailIcon({ name, color }: { name: string; color: string }) {
 
 export default function App() {
   const [query, setQuery] = useState('');
-  const [colorFilter, setColorFilter] = useState<Color | null>(null);
-  const [ownFilter, setOwnFilter] = useState<OwnFilter>('all');
+  const [colorFilter, setColorFilter] = useState<Color | null>(() => {
+    const v = localStorage.getItem('feh.colorFilter');
+    return v === 'red' || v === 'blue' || v === 'green' || v === 'colorless'
+      ? (v as Color)
+      : null;
+  });
+  const [ownFilter, setOwnFilter] = useState<OwnFilter>(() => {
+    const v = localStorage.getItem('feh.ownFilter');
+    return v === 'owned' || v === 'missing' ? v : 'all';
+  });
   const [tab, setTab] = useState<string>(() => {
     const saved =
       typeof localStorage !== 'undefined' ? localStorage.getItem('feh.tab') : null;
@@ -102,15 +110,30 @@ export default function App() {
   });
   const [selected, setSelected] = useState<Hero | null>(null);
   const [visible, setVisible] = useState(60);
-  const [sortStat, setSortStat] = useState('default');
+  const [sortStat, setSortStat] = useState<string>(() => {
+    const v = localStorage.getItem('feh.sortStat');
+    return v && ['default', 'total', 'ATQ', 'VIT', 'PV', 'DEF', 'RES'].includes(v)
+      ? v
+      : 'default';
+  });
   const { user, loading: authLoading } = useAuth();
   const { owned, stats, toggle, refetch } = useCollection(user?.id ?? null);
   const heroes = useHeroes();
 
-  // Mémorise le dernier onglet ouvert (rechargement de page).
+  // Mémorise le dernier onglet ouvert + les filtres (rechargement de page).
   useEffect(() => {
     localStorage.setItem('feh.tab', tab);
   }, [tab]);
+  useEffect(() => {
+    if (colorFilter) localStorage.setItem('feh.colorFilter', colorFilter);
+    else localStorage.removeItem('feh.colorFilter');
+  }, [colorFilter]);
+  useEffect(() => {
+    localStorage.setItem('feh.ownFilter', ownFilter);
+  }, [ownFilter]);
+  useEffect(() => {
+    localStorage.setItem('feh.sortStat', sortStat);
+  }, [sortStat]);
 
   const ownedCount = owned.size;
   const total = heroes.length;
