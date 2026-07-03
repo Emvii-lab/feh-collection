@@ -92,7 +92,9 @@ function RailIcon({ name, color }: { name: string; color: string }) {
 }
 
 export default function App() {
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState<string>(
+    () => localStorage.getItem('feh.query') ?? '',
+  );
   const [colorFilter, setColorFilter] = useState<Color | null>(() => {
     const v = localStorage.getItem('feh.colorFilter');
     return v === 'red' || v === 'blue' || v === 'green' || v === 'colorless'
@@ -124,6 +126,10 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('feh.tab', tab);
   }, [tab]);
+  useEffect(() => {
+    if (query) localStorage.setItem('feh.query', query);
+    else localStorage.removeItem('feh.query');
+  }, [query]);
   useEffect(() => {
     if (colorFilter) localStorage.setItem('feh.colorFilter', colorFilter);
     else localStorage.removeItem('feh.colorFilter');
