@@ -95,13 +95,22 @@ export default function App() {
   const [query, setQuery] = useState('');
   const [colorFilter, setColorFilter] = useState<Color | null>(null);
   const [ownFilter, setOwnFilter] = useState<OwnFilter>('all');
-  const [tab, setTab] = useState('heroes');
+  const [tab, setTab] = useState<string>(() => {
+    const saved =
+      typeof localStorage !== 'undefined' ? localStorage.getItem('feh.tab') : null;
+    return saved && RAIL.some((t) => t.key === saved) ? saved : 'heroes';
+  });
   const [selected, setSelected] = useState<Hero | null>(null);
   const [visible, setVisible] = useState(60);
   const [sortStat, setSortStat] = useState('default');
   const { user, loading: authLoading } = useAuth();
   const { owned, stats, toggle, refetch } = useCollection(user?.id ?? null);
   const heroes = useHeroes();
+
+  // Mémorise le dernier onglet ouvert (rechargement de page).
+  useEffect(() => {
+    localStorage.setItem('feh.tab', tab);
+  }, [tab]);
 
   const ownedCount = owned.size;
   const total = heroes.length;
