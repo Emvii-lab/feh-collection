@@ -208,9 +208,21 @@ export default function App() {
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => e.key === 'Escape' && setQuery('')}
               placeholder="Rechercher un héros par nom…"
               className="min-w-0 flex-1 border-0 bg-transparent text-[14px] font-semibold text-[#fff4e0] outline-none [text-shadow:0_1px_2px_rgba(0,0,0,.8)] placeholder:font-medium placeholder:text-[#d8c9a6]"
             />
+            {query ? (
+              <button
+                type="button"
+                onClick={() => setQuery('')}
+                aria-label="Effacer la recherche"
+                title="Effacer (Échap)"
+                className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-black/30 text-[13px] leading-none text-[#e6d6ad] transition hover:bg-black/55 hover:text-[#fff4e0] [text-shadow:0_1px_2px_rgba(0,0,0,.8)]"
+              >
+                ✕
+              </button>
+            ) : null}
             <span className="font-feh text-[12px] font-semibold text-[#e6d6ad] [text-shadow:0_1px_2px_rgba(0,0,0,.8)]">
               {filtered.length}
             </span>
