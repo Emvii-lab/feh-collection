@@ -132,6 +132,14 @@ function orientation(s: CollStats | null): string | null {
   return 'Profil tank magique (grosse RÉS). Encaisse la magie ; contre à distance + spéciale défensive.';
 }
 
+// Couleur du badge de rareté selon le palier de déblocage (5★ or, 4★ argent, 3★ bronze…).
+function rarityClass(r: number): string {
+  if (r >= 5) return 'text-amber-200';
+  if (r === 4) return 'text-slate-200';
+  if (r === 3) return 'text-orange-300/90';
+  return 'text-warm-mute';
+}
+
 export function HeroKit({
   skills,
   loading,
@@ -350,14 +358,26 @@ export function HeroKit({
                           ✓ Conseillé
                         </span>
                       ) : null}
-                      <span className="ml-auto shrink-0 font-feh text-[11px] text-warm-mute">
-                        {[
-                          s.might != null ? `Dmg ${s.might}` : null,
-                          s.cooldown != null ? `CD ${s.cooldown}` : null,
-                        ]
-                          .filter(Boolean)
-                          .join(' · ')}
-                      </span>
+                      <div className="ml-auto flex shrink-0 items-center gap-2">
+                        {s.unlock_rarity ? (
+                          <span
+                            title={`Se débloque à ${s.unlock_rarity}★`}
+                            className={`rounded-full bg-black/40 px-1.5 py-0.5 font-feh text-[10px] font-bold ${rarityClass(
+                              s.unlock_rarity,
+                            )}`}
+                          >
+                            {s.unlock_rarity}★
+                          </span>
+                        ) : null}
+                        <span className="font-feh text-[11px] text-warm-mute">
+                          {[
+                            s.might != null ? `Dmg ${s.might}` : null,
+                            s.cooldown != null ? `CD ${s.cooldown}` : null,
+                          ]
+                            .filter(Boolean)
+                            .join(' · ')}
+                        </span>
+                      </div>
                     </div>
                     {reasons.length ? (
                       <div className="mt-0.5 text-[11px] text-emerald-300/90">
@@ -407,6 +427,12 @@ export function HeroKit({
                 {detail.might != null ? ` · Dmg ${detail.might}` : ''}
                 {detail.cooldown != null ? ` · CD ${detail.cooldown}` : ''}
                 {detail.sp != null ? ` · ${detail.sp} SP` : ''}
+                {detail.unlock_rarity ? (
+                  <span className={rarityClass(detail.unlock_rarity)}>
+                    {' '}
+                    · se débloque à {detail.unlock_rarity}★
+                  </span>
+                ) : null}
               </div>
             </div>
             <button
