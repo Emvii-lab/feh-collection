@@ -169,6 +169,14 @@ function rarityClass(r: number): string {
   return 'text-warm-mute';
 }
 
+// Compétences "dépassées" dans un slot = celles qui servent de prérequis (`required`)
+// à une autre compétence présente dans le kit → il existe une version supérieure.
+function supersededSet(list: SkillRow[]): Set<string> {
+  return new Set(
+    list.map((s) => s.required).filter((x): x is string => Boolean(x)),
+  );
+}
+
 export function HeroKit({
   skills,
   loading,
@@ -268,13 +276,18 @@ export function HeroKit({
       ? weapons.reduce((a, b) => (effMight(b) > effMight(a) ? b : a))
       : null;
 
-  // Compétence conseillée par slot = palier le plus haut (SP max) de chaque catégorie non-arme.
+  // Compétence conseillée par slot = version la plus haute (SP max, et la version
+  // supérieure de la chaîne d'amélioration à SP égal).
   const bestPerSlot = new Map<string, string>(); // scategory -> wiki_name
   for (const cat of CATS) {
     if (cat.key === 'weapon') continue;
     const list = skills.filter((s) => s.scategory === cat.key);
     if (list.length) {
-      const top = list.reduce((a, b) => ((b.sp ?? 0) > (a.sp ?? 0) ? b : a));
+      const sup = supersededSet(list);
+      const pool = list.filter((s) => !sup.has(s.wiki_name));
+      const top = (pool.length ? pool : list).reduce((a, b) =>
+        (b.sp ?? 0) > (a.sp ?? 0) ? b : a,
+      );
       bestPerSlot.set(cat.key, top.wiki_name);
     }
   }
@@ -334,10 +347,15 @@ export function HeroKit({
       {CATS.map((cat) => {
         let list = skills.filter((s) => s.scategory === cat.key);
         if (list.length === 0) return null;
+        const sup = supersededSet(list);
         list =
           cat.key === 'weapon'
             ? [...list].sort((a, b) => effMight(b) - effMight(a))
-            : [...list].sort((a, b) => (b.sp ?? 0) - (a.sp ?? 0));
+            : [...list].sort(
+                (a, b) =>
+                  (b.sp ?? 0) - (a.sp ?? 0) ||
+                  Number(sup.has(a.wiki_name)) - Number(sup.has(b.wiki_name)),
+              );
         return (
           <div key={cat.key}>
             <h4 className="mb-1.5 font-feh text-[13px] font-semibold text-gold-text">
