@@ -114,7 +114,8 @@ export default function App() {
   const [visible, setVisible] = useState(60);
   const [sortStat, setSortStat] = useState<string>(() => {
     const v = localStorage.getItem('feh.sortStat');
-    return v && ['default', 'total', 'ATQ', 'VIT', 'PV', 'DEF', 'RES'].includes(v)
+    return v &&
+      ['default', 'release', 'total', 'ATQ', 'VIT', 'PV', 'DEF', 'RES'].includes(v)
       ? v
       : 'default';
   });
@@ -170,7 +171,12 @@ export default function App() {
         h.origin.toLowerCase().includes(q)
       );
     });
-    if (sortStat !== 'default') {
+    if (sortStat === 'release') {
+      // Date de sortie, de la plus ancienne à la plus récente (tri stable → départage par Ordre d'Askr).
+      list.sort((a, b) =>
+        (a.releaseDate ?? '9999-99-99').localeCompare(b.releaseDate ?? '9999-99-99'),
+      );
+    } else if (sortStat !== 'default') {
       const val = (h: Hero) => {
         const s = stats.get(h.id);
         if (!s) return 0;
@@ -436,6 +442,7 @@ export default function App() {
                   className="rounded-lg border border-white/10 bg-black/40 px-2.5 py-1.5 text-[12.5px] text-warm-text outline-none focus:border-gold/50"
                 >
                   <option value="default">Tri : défaut</option>
+                  <option value="release">Sortie (ancien → récent)</option>
                   <option value="total">Total stats</option>
                   <option value="ATQ">Attaque</option>
                   <option value="VIT">Vitesse</option>

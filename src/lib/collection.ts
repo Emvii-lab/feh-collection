@@ -27,6 +27,7 @@ export type CollStats = {
   VIT: number | null;
   DEF: number | null;
   RES: number | null;
+  rarity: number | null; // étoiles de MON exemplaire (1..5), null = non renseigné
 };
 
 export const STAT_COLS = ['LVL', 'PV', 'ATQ', 'VIT', 'DEF', 'RES'] as const;
@@ -42,7 +43,15 @@ export async function fetchHeroStats(
     .eq('hero_id', heroId)
     .maybeSingle();
   if (error || !data) return null;
-  return data as unknown as CollStats;
+  // rareté récupérée à part et tolérante (n'échoue pas si la colonne n'existe pas encore).
+  let rarity: number | null = null;
+  const { data: rr } = await supabase
+    .from('collection')
+    .select('rarity')
+    .eq('hero_id', heroId)
+    .maybeSingle();
+  rarity = (rr as { rarity: number | null } | null)?.rarity ?? null;
+  return { ...(data as unknown as Omit<CollStats, 'rarity'>), rarity };
 }
 
 // Enregistre les stats (upsert : crée la ligne de collection si besoin → possédé).
@@ -90,7 +99,11 @@ export async function fetchCollection(): Promise<CollRow[]> {
     const { data, error } = await supabase
       .from('collection')
       .select(['hero_id', ...STAT_COLS].join(','));
-    if (!error) return (data ?? []) as unknown as CollRow[];
+    if (!error)
+      return (data ?? []).map((r) => ({
+        rarity: null,
+        ...(r as object),
+      })) as unknown as CollRow[];
     console.warn('Collection indisponible :', error.message);
   }
   return [...readLocal()].map((hero_id) => ({
@@ -101,6 +114,7 @@ export async function fetchCollection(): Promise<CollRow[]> {
     VIT: null,
     DEF: null,
     RES: null,
+    rarity: null,
   }));
 }
 

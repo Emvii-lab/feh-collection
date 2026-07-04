@@ -28,6 +28,7 @@ export function useCollection(userId: string | null) {
           VIT: r.VIT,
           DEF: r.DEF,
           RES: r.RES,
+          rarity: r.rarity,
         });
       }
       setStats(m);

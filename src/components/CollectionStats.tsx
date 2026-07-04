@@ -5,8 +5,10 @@ import {
   type CollStats,
 } from '../lib/collection';
 
+type StatKey = 'LVL' | 'PV' | 'ATQ' | 'VIT' | 'DEF' | 'RES';
+
 // Les 5 stats de combat (PV/ATQ/VIT/DÉF/RÉS) + le niveau à part.
-const STATS: { key: keyof CollStats; label: string }[] = [
+const STATS: { key: StatKey; label: string }[] = [
   { key: 'PV', label: 'PV' },
   { key: 'ATQ', label: 'ATQ' },
   { key: 'VIT', label: 'VIT' },
@@ -14,7 +16,7 @@ const STATS: { key: keyof CollStats; label: string }[] = [
   { key: 'RES', label: 'RÉS' },
 ];
 
-type Vals = Record<keyof CollStats, string>;
+type Vals = Record<StatKey, string>;
 const EMPTY: Vals = { LVL: '', PV: '', ATQ: '', VIT: '', DEF: '', RES: '' };
 
 export function CollectionStats({
@@ -27,6 +29,7 @@ export function CollectionStats({
   onSaved?: () => void;
 }) {
   const [vals, setVals] = useState<Vals>(EMPTY);
+  const [rarity, setRarity] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -39,11 +42,12 @@ export function CollectionStats({
       if (!active) return;
       const next = { ...EMPTY };
       if (s) {
-        (Object.keys(EMPTY) as (keyof CollStats)[]).forEach((k) => {
+        (Object.keys(EMPTY) as StatKey[]).forEach((k) => {
           next[k] = s[k] != null ? String(s[k]) : '';
         });
       }
       setVals(next);
+      setRarity(s?.rarity ?? null);
       setLoading(false);
     });
     return () => {
@@ -51,7 +55,7 @@ export function CollectionStats({
     };
   }, [heroId]);
 
-  const set = (k: keyof CollStats, v: string) =>
+  const set = (k: StatKey, v: string) =>
     setVals((p) => ({ ...p, [k]: v.replace(/[^0-9]/g, '') }));
 
   const total = STATS.reduce((sum, s) => sum + (parseInt(vals[s.key]) || 0), 0);
@@ -59,8 +63,8 @@ export function CollectionStats({
   const save = async () => {
     setSaving(true);
     setMsg(null);
-    const payload: Partial<CollStats> = {};
-    (Object.keys(EMPTY) as (keyof CollStats)[]).forEach((k) => {
+    const payload: Partial<CollStats> = { rarity };
+    (Object.keys(EMPTY) as StatKey[]).forEach((k) => {
       payload[k] = vals[k].trim() === '' ? null : parseInt(vals[k]);
     });
     const err = await saveHeroStats(heroId, userId, payload);
@@ -100,6 +104,33 @@ export function CollectionStats({
           placeholder="—"
           className="w-20 rounded-lg border border-white/10 bg-black/40 px-3 py-1.5 text-center font-feh text-[14px] text-warm-text outline-none transition focus:border-gold/50 focus:ring-1 focus:ring-gold/30"
         />
+      </div>
+
+      {/* Rareté de mon exemplaire (étoiles) */}
+      <div className="mb-3 flex items-center gap-3">
+        <span className="w-12 shrink-0 font-feh text-[13px] text-warm-dim">
+          Étoiles
+        </span>
+        <div className="flex items-center gap-0.5">
+          {[1, 2, 3, 4, 5].map((n) => (
+            <button
+              key={n}
+              type="button"
+              onClick={() => setRarity(rarity === n ? null : n)}
+              aria-label={`${n} étoile${n > 1 ? 's' : ''}`}
+              className={`text-[22px] leading-none transition ${
+                n <= (rarity ?? 0)
+                  ? 'text-gold-light'
+                  : 'text-warm-mute/30 hover:text-warm-mute/60'
+              }`}
+            >
+              ★
+            </button>
+          ))}
+          <span className="ml-2 font-feh text-[12px] text-warm-dim">
+            {rarity ? `${rarity}★` : 'non renseigné'}
+          </span>
+        </div>
       </div>
 
       {/* Stats de combat */}
