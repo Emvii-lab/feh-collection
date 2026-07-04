@@ -88,21 +88,29 @@ function weaponReason(w: SkillRow): string[] {
   return r;
 }
 
-// Ligne d'efficacité d'arme : libellé « Eff » + icône (weapon_effectiveness_url),
-// repli sur le texte « vs … » si pas d'icône renseignée.
+// Ligne d'efficacité d'arme : libellé « Eff » + icône(s) (weapon_effectiveness_url).
+// Le champ peut contenir PLUSIEURS urls séparées par des virgules (ex. armored,flying)
+// → une icône par url, côte à côte. Repli sur le texte « vs … » si pas d'icône.
 function WeaponEff({ w, size }: { w: SkillRow; size: number }) {
   if (!w.weapon_effectiveness) return null;
   const label = cleanWiki(w.weapon_effectiveness);
+  const urls = (w.weapon_effectiveness_url ?? '')
+    .split(',')
+    .map((u) => u.trim())
+    .filter(Boolean);
   return (
     <span className="inline-flex items-center gap-1 font-feh text-[11px] text-emerald-300/90" title={`Efficace vs ${label}`}>
       Eff
-      {w.weapon_effectiveness_url ? (
-        <img
-          src={w.weapon_effectiveness_url}
-          alt={label}
-          style={{ height: size, width: size }}
-          className="object-contain drop-shadow-[0_1px_2px_rgba(0,0,0,.5)]"
-        />
+      {urls.length ? (
+        urls.map((u, i) => (
+          <img
+            key={i}
+            src={u}
+            alt={label}
+            style={{ height: size, width: size }}
+            className="object-contain drop-shadow-[0_1px_2px_rgba(0,0,0,.5)]"
+          />
+        ))
       ) : (
         <span>vs {label}</span>
       )}
