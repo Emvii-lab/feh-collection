@@ -10,3 +10,9 @@ alter table feh.collection drop constraint if exists collection_rarity_chk;
 alter table feh.collection
   add constraint collection_rarity_chk
   check (rarity is null or rarity between 1 and 5);
+
+-- FK vers les icônes de rareté (cohérence avec heroes.rarity).
+alter table feh.collection drop constraint if exists collection_rarity_fk;
+alter table feh.collection
+  add constraint collection_rarity_fk
+  foreign key (rarity) references feh.rarity_icons(rarity);
