@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useHeroes } from './lib/useHeroes';
 import type { Color, Hero } from './types';
 import { HeroCard } from './components/HeroCard';
+import { useRarityIcons } from './lib/useRarityIcons';
 import { HeroDetail } from './components/HeroDetail';
 import { Stats } from './components/Stats';
 import { Credits } from './components/Credits';
@@ -122,6 +123,7 @@ export default function App() {
   const { user, loading: authLoading } = useAuth();
   const { owned, stats, toggle, refetch } = useCollection(user?.id ?? null);
   const heroes = useHeroes();
+  const rarityIcons = useRarityIcons();
 
   // Mémorise le dernier onglet ouvert + les filtres (rechargement de page).
   useEffect(() => {
@@ -469,6 +471,8 @@ export default function App() {
                     selected={selected?.id === h.id}
                     onOpen={() => setSelected(h)}
                     onToggleOwned={() => toggle(h.id)}
+                    rarityIcons={rarityIcons}
+                    copyRarity={stats.get(h.id)?.rarity ?? null}
                   />
                 ))}
               </div>

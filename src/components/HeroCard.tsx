@@ -9,13 +9,19 @@ export function HeroCard({
   selected,
   onOpen,
   onToggleOwned,
+  rarityIcons,
+  copyRarity,
 }: {
   hero: Hero;
   owned: boolean;
   selected: boolean;
   onOpen: () => void;
   onToggleOwned: () => void;
+  rarityIcons: Map<number, string>;
+  copyRarity?: number | null;
 }) {
+  // Rareté affichée = mon exemplaire si renseigné, sinon rareté max du héros.
+  const displayRarity = copyRarity ?? hero.rarity;
 
 
   const hasResplendent = Boolean(
@@ -137,7 +143,10 @@ export function HeroCard({
 
         {/* étoiles */}
         <div className="absolute inset-x-0 bottom-[44px] flex justify-center text-[11px] tracking-[1px] text-gold-text">
-          <RarityStars rarity={hero.rarity} rarityUrl={hero.rarity_url} />
+          <RarityStars
+            rarity={displayRarity}
+            rarityUrl={rarityIcons.get(displayRarity)}
+          />
         </div>
 
         {/* nom + épithète */}

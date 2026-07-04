@@ -55,7 +55,7 @@ export function HeroDetail({
   // Étoiles : rareté de mon exemplaire si renseignée, sinon rareté max du héros.
   const rarityIcons = useRarityIcons();
   const displayRarity = copyRarity ?? hero.rarity;
-  const starUrl = rarityIcons.get(displayRarity) ?? hero.rarity_url;
+  const starUrl = rarityIcons.get(displayRarity);
 
   const [failed, setFailed] = useState(false);
   const baseArt = showResp ? hero.artResplendent : hero.detailArt;
