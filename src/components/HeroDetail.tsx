@@ -6,6 +6,7 @@ import { CollectionStats } from './CollectionStats';
 import { HeroKit } from './HeroKit';
 import { useHeroSkills } from '../lib/useHeroSkills';
 import { useRarityIcons } from '../lib/useRarityIcons';
+import { useGames } from '../lib/useGames';
 
 const GOLD_GRAD = 'linear-gradient(90deg,#b78a2e,#ffd166 70%,#fff3cf)';
 
@@ -56,6 +57,10 @@ export function HeroDetail({
   const rarityIcons = useRarityIcons();
   const displayRarity = copyRarity ?? hero.rarity;
   const starUrl = rarityIcons.get(displayRarity);
+
+  // Logo du jeu d'origine depuis la table games (repli sur hero.originUrl).
+  const games = useGames();
+  const gameLogo = games.get(hero.origin ?? '') ?? hero.originUrl;
 
   const [failed, setFailed] = useState(false);
   const baseArt = showResp ? hero.artResplendent : hero.detailArt;
@@ -263,15 +268,20 @@ export function HeroDetail({
           </div>
         ) : null}
 
-        {/* origine : image origin_url (repli sur le texte si absente) */}
-        {hero.originUrl ? (
-          <div className="flex justify-center px-5 py-3">
+        {/* origine : logo du jeu (games.icon_url) + nom en dessous (logos JP ambigus) */}
+        {gameLogo ? (
+          <div className="flex flex-col items-center gap-1.5 px-5 py-3">
             <img
-              src={hero.originUrl}
+              src={gameLogo}
               alt={hero.origin || 'Origine'}
               title={hero.origin}
               className="h-[110px] w-auto max-w-full object-contain"
             />
+            {hero.origin ? (
+              <span className="text-center font-feh text-[11px] text-warm-mute">
+                {hero.origin}
+              </span>
+            ) : null}
           </div>
         ) : hero.origin ? (
           <div className="flex flex-wrap gap-2 px-5 py-3 text-sm">
