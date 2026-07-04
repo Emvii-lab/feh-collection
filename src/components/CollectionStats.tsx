@@ -92,21 +92,7 @@ export function CollectionStats({
         propres à ton compte.
       </p>
 
-      {/* Niveau */}
-      <div className="mb-3 flex items-center gap-3">
-        <span className="w-12 shrink-0 font-feh text-[13px] text-warm-dim">
-          Niveau
-        </span>
-        <input
-          inputMode="numeric"
-          value={vals.LVL}
-          onChange={(e) => set('LVL', e.target.value)}
-          placeholder="—"
-          className="w-20 rounded-lg border border-white/10 bg-black/40 px-3 py-1.5 text-center font-feh text-[14px] text-warm-text outline-none transition focus:border-gold/50 focus:ring-1 focus:ring-gold/30"
-        />
-      </div>
-
-      {/* Rareté de mon exemplaire (étoiles) */}
+      {/* Rareté de mon exemplaire (étoiles) — au-dessus du niveau */}
       <div className="mb-3 flex items-center gap-3">
         <span className="w-12 shrink-0 font-feh text-[13px] text-warm-dim">
           Étoiles
@@ -131,6 +117,20 @@ export function CollectionStats({
             {rarity ? `${rarity}★` : 'non renseigné'}
           </span>
         </div>
+      </div>
+
+      {/* Niveau */}
+      <div className="mb-3 flex items-center gap-3">
+        <span className="w-12 shrink-0 font-feh text-[13px] text-warm-dim">
+          Niveau
+        </span>
+        <input
+          inputMode="numeric"
+          value={vals.LVL}
+          onChange={(e) => set('LVL', e.target.value)}
+          placeholder="—"
+          className="w-20 rounded-lg border border-white/10 bg-black/40 px-3 py-1.5 text-center font-feh text-[14px] text-warm-text outline-none transition focus:border-gold/50 focus:ring-1 focus:ring-gold/30"
+        />
       </div>
 
       {/* Stats de combat */}

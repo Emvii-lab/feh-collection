@@ -32,11 +32,13 @@ export function HeroDetail({
   hero,
   onClose,
   userId,
+  copyRarity,
   onSaved,
 }: {
   hero: Hero;
   onClose: () => void;
   userId: string | null;
+  copyRarity?: number | null; // rareté de MON exemplaire (prioritaire sur la rareté max)
   onSaved?: () => void;
 }) {
   // Tenue resplendissante (si au moins une pose resp. existe).
@@ -195,7 +197,7 @@ export function HeroDetail({
                 {hero.name}
               </span>
               <div className="absolute inset-x-0 top-[84%] -translate-y-1/2 flex justify-center">
-                <RarityStars rarity={hero.rarity} rarityUrl={hero.rarity_url} />
+                <RarityStars rarity={copyRarity ?? hero.rarity} rarityUrl={hero.rarity_url} />
               </div>
             </div>
           </div>

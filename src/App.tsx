@@ -504,6 +504,7 @@ export default function App() {
           hero={selected}
           onClose={() => setSelected(null)}
           userId={user.id}
+          copyRarity={stats.get(selected.id)?.rarity ?? null}
           onSaved={refetch}
         />
       )}
