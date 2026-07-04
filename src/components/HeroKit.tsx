@@ -73,13 +73,11 @@ const isBrave = (d: string | null) => /attacks?\s+twice|brave/i.test(d ?? '');
 const isSlaying = (d: string | null) =>
   /accelerates special|slaying|special cooldown charge/i.test(d ?? '');
 
-// Puissance "effective" d'une arme (heuristique) : Brave ≈ ×2 coups, + bonus efficacité / slaying.
+// Classement d'arme = le Dmg (puissance) prime. Seul Brave (≈ ×2 coups) augmente
+// le Dmg réel ; l'efficacité (situationnelle) et le slaying ne comptent PAS ici.
 function effMight(w: SkillRow): number {
-  let m = w.might ?? 0;
-  if (isBrave(w.description)) m *= 1.9;
-  if (w.weapon_effectiveness) m += 3;
-  if (isSlaying(w.description)) m += 2;
-  return Math.round(m);
+  const m = w.might ?? 0;
+  return isBrave(w.description) ? Math.round(m * 1.9) : m;
 }
 function weaponReason(w: SkillRow): string[] {
   const r: string[] = [];
@@ -269,12 +267,18 @@ export function HeroKit({
     );
   }
 
-  // Meilleure arme = plus grosse puissance effective.
+  // Meilleure arme (en général) = plus gros Dmg ; à Dmg égal, la version supérieure (le +).
   const weapons = skills.filter((s) => s.scategory === 'weapon');
-  const bestWeapon =
-    weapons.length > 0
-      ? weapons.reduce((a, b) => (effMight(b) > effMight(a) ? b : a))
-      : null;
+  const bestWeapon = (() => {
+    if (weapons.length === 0) return null;
+    const sup = supersededSet(weapons);
+    return weapons.reduce((a, b) => {
+      const ea = effMight(a);
+      const eb = effMight(b);
+      if (eb !== ea) return eb > ea ? b : a;
+      return sup.has(a.wiki_name) && !sup.has(b.wiki_name) ? b : a;
+    });
+  })();
 
   // Compétence conseillée par slot = version la plus haute (SP max, et la version
   // supérieure de la chaîne d'amélioration à SP égal).
@@ -350,7 +354,11 @@ export function HeroKit({
         const sup = supersededSet(list);
         list =
           cat.key === 'weapon'
-            ? [...list].sort((a, b) => effMight(b) - effMight(a))
+            ? [...list].sort(
+                (a, b) =>
+                  effMight(b) - effMight(a) ||
+                  Number(sup.has(a.wiki_name)) - Number(sup.has(b.wiki_name)),
+              )
             : [...list].sort(
                 (a, b) =>
                   (b.sp ?? 0) - (a.sp ?? 0) ||
