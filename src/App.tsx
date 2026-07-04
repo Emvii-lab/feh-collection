@@ -118,7 +118,7 @@ export default function App() {
     return v &&
       ['default', 'release', 'total', 'ATQ', 'VIT', 'PV', 'DEF', 'RES'].includes(v)
       ? v
-      : 'default';
+      : 'release';
   });
   const { user, loading: authLoading } = useAuth();
   const { owned, stats, toggle, refetch } = useCollection(user?.id ?? null);
