@@ -321,16 +321,13 @@ export function HeroKit({
         </p>
       )}
 
-      {refineText ? (
+      {refineText && bestWeapon ? (
         <div className="rounded-lg border border-white/10 bg-black/25 px-3 py-2 text-[12.5px] text-warm-dim">
           <span className="font-feh font-semibold text-gold-text">
             Raffinage conseillé :{' '}
           </span>
-          <span className="text-warm-text">{refineText}</span>.
-          <span className="text-warm-mute">
-            {' '}
-            (Atelier d'armement : améliore la meilleure arme ci-dessous.)
-          </span>
+          <span className="text-warm-text">{bestWeapon.name}</span> — {refineText}.
+          <span className="text-warm-mute"> (à forger à l'Atelier d'armement.)</span>
         </div>
       ) : null}
 
