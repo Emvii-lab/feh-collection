@@ -4,6 +4,7 @@ import {
   saveHeroStats,
   type CollStats,
 } from '../lib/collection';
+import { useRarityIcons } from '../lib/useRarityIcons';
 
 type StatKey = 'LVL' | 'PV' | 'ATQ' | 'VIT' | 'DEF' | 'RES';
 
@@ -30,6 +31,7 @@ export function CollectionStats({
 }) {
   const [vals, setVals] = useState<Vals>(EMPTY);
   const [rarity, setRarity] = useState<number | null>(null);
+  const rarityIcons = useRarityIcons();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -98,21 +100,37 @@ export function CollectionStats({
           Étoiles
         </span>
         <div className="flex items-center gap-0.5">
-          {[1, 2, 3, 4, 5].map((n) => (
-            <button
-              key={n}
-              type="button"
-              onClick={() => setRarity(rarity === n ? null : n)}
-              aria-label={`${n} étoile${n > 1 ? 's' : ''}`}
-              className={`text-[22px] leading-none transition ${
-                n <= (rarity ?? 0)
-                  ? 'text-gold-light'
-                  : 'text-warm-mute/30 hover:text-warm-mute/60'
-              }`}
-            >
-              ★
-            </button>
-          ))}
+          {[1, 2, 3, 4, 5].map((n) => {
+            const active = n <= (rarity ?? 0);
+            const url = rarityIcons.get(rarity ?? 5);
+            return (
+              <button
+                key={n}
+                type="button"
+                onClick={() => setRarity(rarity === n ? null : n)}
+                aria-label={`${n} étoile${n > 1 ? 's' : ''}`}
+                className="transition hover:brightness-110"
+              >
+                {url ? (
+                  <img
+                    src={url}
+                    alt=""
+                    className={`h-[22px] w-[22px] object-contain ${
+                      active ? '' : 'opacity-25 grayscale'
+                    }`}
+                  />
+                ) : (
+                  <span
+                    className={`text-[22px] leading-none ${
+                      active ? 'text-gold-light' : 'text-warm-mute/30'
+                    }`}
+                  >
+                    ★
+                  </span>
+                )}
+              </button>
+            );
+          })}
           <span className="ml-2 font-feh text-[12px] text-warm-dim">
             {rarity ? `${rarity}★` : 'non renseigné'}
           </span>

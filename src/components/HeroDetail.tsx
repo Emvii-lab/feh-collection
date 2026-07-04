@@ -5,6 +5,7 @@ import { useHeroVoices, type HeroVoices } from '../lib/useHeroVoices';
 import { CollectionStats } from './CollectionStats';
 import { HeroKit } from './HeroKit';
 import { useHeroSkills } from '../lib/useHeroSkills';
+import { useRarityIcons } from '../lib/useRarityIcons';
 
 const GOLD_GRAD = 'linear-gradient(90deg,#b78a2e,#ffd166 70%,#fff3cf)';
 
@@ -50,6 +51,11 @@ export function HeroDetail({
   );
   const [resplendent, setResplendent] = useState(false);
   const showResp = resplendent && hasResplendent;
+
+  // Étoiles : rareté de mon exemplaire si renseignée, sinon rareté max du héros.
+  const rarityIcons = useRarityIcons();
+  const displayRarity = copyRarity ?? hero.rarity;
+  const starUrl = rarityIcons.get(displayRarity) ?? hero.rarity_url;
 
   const [failed, setFailed] = useState(false);
   const baseArt = showResp ? hero.artResplendent : hero.detailArt;
@@ -197,7 +203,7 @@ export function HeroDetail({
                 {hero.name}
               </span>
               <div className="absolute inset-x-0 top-[84%] -translate-y-1/2 flex justify-center">
-                <RarityStars rarity={copyRarity ?? hero.rarity} rarityUrl={hero.rarity_url} />
+                <RarityStars rarity={displayRarity} rarityUrl={starUrl} />
               </div>
             </div>
           </div>

@@ -96,15 +96,20 @@ export function statTotal(s: Partial<CollStats> | undefined | null): number {
 // Récupère toute la collection de l'utilisateur (hero_id + stats) en une requête.
 export async function fetchCollection(): Promise<CollRow[]> {
   if (supabase) {
-    const { data, error } = await supabase
+    // Essaie avec rarity ; repli sans si la colonne n'existe pas encore.
+    let res = await supabase
       .from('collection')
-      .select(['hero_id', ...STAT_COLS].join(','));
-    if (!error)
-      return (data ?? []).map((r) => ({
+      .select(['hero_id', ...STAT_COLS, 'rarity'].join(','));
+    if (res.error)
+      res = await supabase
+        .from('collection')
+        .select(['hero_id', ...STAT_COLS].join(','));
+    if (!res.error)
+      return (res.data ?? []).map((r) => ({
         rarity: null,
         ...(r as object),
       })) as unknown as CollRow[];
-    console.warn('Collection indisponible :', error.message);
+    console.warn('Collection indisponible :', res.error.message);
   }
   return [...readLocal()].map((hero_id) => ({
     hero_id,
