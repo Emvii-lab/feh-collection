@@ -38,6 +38,7 @@ const CATS: { key: string; label: string }[] = [
   { key: 'passivea', label: 'Passif A' },
   { key: 'passiveb', label: 'Passif B' },
   { key: 'passivec', label: 'Passif C' },
+  { key: 'passivex', label: 'Passif X' },
 ];
 const CAT_LABEL: Record<string, string> = Object.fromEntries(
   CATS.map((c) => [c.key, c.label]),
