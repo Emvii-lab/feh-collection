@@ -131,8 +131,24 @@ export function CollectionStats({
               </button>
             );
           })}
+          <button
+            type="button"
+            onClick={() => setRarity(rarity === 6 ? null : 6)}
+            title="Forma (Salle des Formes) — 5 étoiles bleues"
+            className={`ml-2 rounded-md border px-2 py-0.5 font-feh text-[11px] transition ${
+              rarity === 6
+                ? 'border-sky-400/60 bg-sky-400/15 text-sky-200'
+                : 'border-white/10 text-warm-mute hover:text-warm-dim'
+            }`}
+          >
+            Forma
+          </button>
           <span className="ml-2 font-feh text-[12px] text-warm-dim">
-            {rarity ? `${rarity}★` : 'non renseigné'}
+            {rarity === 6
+              ? 'Forma · 5★ bleu'
+              : rarity
+                ? `${rarity}★`
+                : 'non renseigné'}
           </span>
         </div>
       </div>

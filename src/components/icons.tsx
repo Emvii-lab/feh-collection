@@ -79,10 +79,13 @@ export function MoveIcon({
 }
 
 export function RarityStars({ rarity, rarityUrl }: { rarity: number; rarityUrl?: string }) {
+  // rarity 6 = Forma (5 étoiles BLEUES) : on plafonne le NOMBRE d'étoiles à 5,
+  // l'image bleue venant du palier 6 dans rarity_icons.
+  const count = Math.min(rarity, 5);
   if (rarityUrl) {
     return (
       <span className="flex items-center justify-center -space-x-[3px]">
-        {Array.from({ length: rarity }).map((_, i) => (
+        {Array.from({ length: count }).map((_, i) => (
           <img
             key={i}
             src={rarityUrl}
@@ -95,8 +98,8 @@ export function RarityStars({ rarity, rarityUrl }: { rarity: number; rarityUrl?:
   }
   return (
     <span className="tracking-[1px] text-gold-text">
-      {'★'.repeat(rarity)}
-      <span className="text-white/15">{'★'.repeat(5 - rarity)}</span>
+      {'★'.repeat(count)}
+      <span className="text-white/15">{'★'.repeat(Math.max(0, 5 - count))}</span>
     </span>
   );
 }
