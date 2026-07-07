@@ -143,13 +143,6 @@ export function CollectionStats({
           >
             Forma
           </button>
-          <span className="ml-2 font-feh text-[12px] text-warm-dim">
-            {rarity === 6
-              ? 'Forma · 5★ bleu'
-              : rarity
-                ? `${rarity}★`
-                : 'non renseigné'}
-          </span>
         </div>
       </div>
 
