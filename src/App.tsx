@@ -11,6 +11,7 @@ import { Settings } from './components/Settings';
 import { statTotal } from './lib/collection';
 import { COLOR_LABEL } from './theme';
 import { useCollection } from './lib/useCollection';
+import { allocateSeals } from './lib/seals';
 import { isSupabaseConfigured } from './lib/supabase';
 import { useAuth, signOut } from './lib/useAuth';
 import { Login } from './components/Login';
@@ -124,6 +125,8 @@ export default function App() {
   const { owned, stats, toggle, refetch } = useCollection(user?.id ?? null);
   const heroes = useHeroes();
   const rarityIcons = useRarityIcons();
+  // Répartition des sceaux : chaque sceau unique va à un seul héros 5★+.
+  const sealAlloc = useMemo(() => allocateSeals(stats), [stats]);
 
   // Mémorise le dernier onglet ouvert + les filtres (rechargement de page).
   useEffect(() => {
@@ -509,6 +512,7 @@ export default function App() {
           onClose={() => setSelected(null)}
           userId={user.id}
           copyRarity={stats.get(selected.id)?.rarity ?? null}
+          sealPick={sealAlloc.get(selected.id) ?? null}
           onSaved={refetch}
         />
       )}

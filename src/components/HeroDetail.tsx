@@ -4,6 +4,7 @@ import { MoveIcon, RarityStars, WeaponIcon } from './icons';
 import { useHeroVoices, type HeroVoices } from '../lib/useHeroVoices';
 import { CollectionStats } from './CollectionStats';
 import { HeroKit } from './HeroKit';
+import type { SealPick } from '../lib/seals';
 import { useHeroSkills } from '../lib/useHeroSkills';
 import { useRarityIcons } from '../lib/useRarityIcons';
 import { useGames } from '../lib/useGames';
@@ -35,12 +36,14 @@ export function HeroDetail({
   onClose,
   userId,
   copyRarity,
+  sealPick,
   onSaved,
 }: {
   hero: Hero;
   onClose: () => void;
   userId: string | null;
   copyRarity?: number | null; // rareté de MON exemplaire (prioritaire sur la rareté max)
+  sealPick?: SealPick | null; // sceau attribué à ce héros par la répartition globale
   onSaved?: () => void;
 }) {
   // Tenue resplendissante (si au moins une pose resp. existe).
@@ -318,7 +321,12 @@ export function HeroDetail({
           />
         ) : (
           detailTab === 'kit' ? (
-          <HeroKit skills={skills} loading={skillsLoading} heroId={hero.id} />
+          <HeroKit
+            skills={skills}
+            loading={skillsLoading}
+            heroId={hero.id}
+            sealPick={sealPick ?? null}
+          />
         ) : (
           <VoiceTab voices={voices} loading={voicesLoading} />
         ))}

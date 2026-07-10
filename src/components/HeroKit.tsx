@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { SkillRow } from '../lib/useHeroSkills';
 import { fetchHeroStats, type CollStats } from '../lib/collection';
 import { supabase } from '../lib/supabase';
+import { isHighRarity, type SealPick } from '../lib/seals';
 
 const REFINE_LABEL: Record<string, string> = {
   atk: 'ATQ',
@@ -117,30 +118,6 @@ function WeaponEff({ w, size }: { w: SkillRow; size: number }) {
   );
 }
 
-// Sceau (S) conseillé selon le profil — UNIQUEMENT des sceaux forgeables à la
-// Forge sacré (noms FR in-game). Les accélérateurs de spéciale (Lame lourde,
-// Lame miroitante…) ne sont PAS forgeables : anciennes récompenses d'events,
-// donc jamais conseillés ici pour rester obtenables.
-// key = wiki_name du sceau dans feh.skills (pour récupérer nom FR + icône scategory_url) ;
-// label = repli affiché si la ligne n'est pas (encore) trouvée en base.
-function sealReco(
-  s: CollStats | null,
-): { key: string; label: string; why: string } | null {
-  if (!s || s.ATQ == null || s.VIT == null || s.DEF == null || s.RES == null)
-    return null;
-  const { ATQ, VIT, DEF, RES } = s;
-  const max = Math.max(ATQ, VIT, DEF, RES);
-  if (max === ATQ)
-    return VIT >= ATQ - 8
-      ? { key: 'AtkSpd 2', label: 'Atq/Vit', why: 'boost ATQ + VIT en continu — sécurise tes doublons' }
-      : { key: 'AttackDef Plus2', label: 'Atq/Déf +2', why: 'boost ATQ + DÉF en continu — tu tapes fort et encaisses la riposte' };
-  if (max === VIT)
-    return { key: 'AtkSpd 2', label: 'Atq/Vit', why: 'boost ATQ + VIT en continu — double et évite d’être doublé' };
-  if (max === DEF)
-    return { key: 'Close Def 3', label: 'Déf proche', why: 'réduit les dégâts des ennemis au corps à corps' };
-  return { key: 'Resistance Plus2', label: 'Résistance +2', why: 'RÉS en plus pour encaisser la magie' };
-}
-
 // Orientation de build à partir des stats de collection (si saisies).
 function orientation(s: CollStats | null): string | null {
   if (!s || s.ATQ == null || s.VIT == null || s.DEF == null || s.RES == null)
@@ -180,10 +157,12 @@ export function HeroKit({
   skills,
   loading,
   heroId,
+  sealPick,
 }: {
   skills: SkillRow[] | null;
   loading: boolean;
   heroId: string;
+  sealPick?: SealPick | null; // sceau attribué par la répartition globale (unique)
 }) {
   const [stats, setStats] = useState<CollStats | null>(null);
   const [detail, setDetail] = useState<SkillRow | null>(null);
@@ -232,7 +211,7 @@ export function HeroKit({
     scategory_url: string | null;
   } | null>(null);
   useEffect(() => {
-    const key = sealReco(stats)?.key;
+    const key = sealPick?.key;
     if (!supabase || !key) {
       setSealRow(null);
       return;
@@ -253,7 +232,7 @@ export function HeroKit({
     return () => {
       active = false;
     };
-  }, [stats]);
+  }, [sealPick?.key]);
 
   if (loading) {
     return (
@@ -298,44 +277,56 @@ export function HeroKit({
   }
 
   const advice = orientation(stats);
-  const seal = sealReco(stats);
+  const seal = sealPick ?? null;
   const refineText = refineAdvice(stats, refinePaths);
 
   return (
     <>
     <div className="space-y-4 px-5 pb-5 pt-3">
       {advice ? (
-        <div className="space-y-2">
-          <div className="rounded-lg border border-gold-deep/40 bg-gold/[0.06] px-3 py-2 text-[12.5px] text-warm-text">
-            <span className="font-feh font-semibold text-gold-text">
-              Conseil :{' '}
-            </span>
-            {advice}
-          </div>
-          {seal ? (
-            <div className="rounded-lg border border-white/10 bg-black/25 px-3 py-2 text-[12.5px] text-warm-dim">
-              <span className="font-feh font-semibold text-gold-text">
-                Sceau (S) conseillé :{' '}
-              </span>
-              {sealRow?.scategory_url ? (
-                <img
-                  src={sealRow.scategory_url}
-                  alt=""
-                  className="mr-1 inline-block h-5 w-5 align-text-bottom object-contain drop-shadow-[0_1px_1px_rgba(0,0,0,0.6)]"
-                />
-              ) : null}
-              <span className="text-warm-text">{sealRow?.name ?? seal.label}</span> — {seal.why}.
-              <span className="text-warm-mute">
-                {' '}
-                (Forgeable à la Forge sacré, puis à assigner via « Assigner sceaux ».)
-              </span>
-            </div>
-          ) : null}
+        <div className="rounded-lg border border-gold-deep/40 bg-gold/[0.06] px-3 py-2 text-[12.5px] text-warm-text">
+          <span className="font-feh font-semibold text-gold-text">
+            Conseil :{' '}
+          </span>
+          {advice}
         </div>
       ) : (
         <p className="text-[11.5px] text-warm-mute">
           Astuce : saisis les stats du héros (onglet Stats) pour un conseil de
           build adapté à son profil.
+        </p>
+      )}
+
+      {/* Sceau (S) : chaque sceau est unique → réparti sur tes 5★+ (rareté puis stats). */}
+      {seal ? (
+        <div className="rounded-lg border border-white/10 bg-black/25 px-3 py-2 text-[12.5px] text-warm-dim">
+          <span className="font-feh font-semibold text-gold-text">
+            Sceau (S) conseillé :{' '}
+          </span>
+          {sealRow?.scategory_url ? (
+            <img
+              src={sealRow.scategory_url}
+              alt=""
+              className="mr-1 inline-block h-5 w-5 align-text-bottom object-contain drop-shadow-[0_1px_1px_rgba(0,0,0,0.6)]"
+            />
+          ) : null}
+          <span className="text-warm-text">{sealRow?.name ?? seal.label}</span> — {seal.why}.
+          <span className="text-warm-mute">
+            {' '}
+            (Sceau unique, réservé à ce héros parmi tes 5★+ ; à forger puis
+            assigner via « Assigner sceaux ».)
+          </span>
+        </div>
+      ) : isHighRarity(stats?.rarity) ? (
+        <p className="text-[11.5px] text-warm-mute">
+          Aucun sceau unique restant pour ce héros : chaque sceau n’existe qu’en
+          un exemplaire et a été attribué à des héros mieux classés (rareté puis
+          total de stats).
+        </p>
+      ) : (
+        <p className="text-[11.5px] text-warm-mute">
+          Les sceaux ne sont conseillés que pour tes héros 5★ et plus (rareté de
+          ton exemplaire, à renseigner dans l’onglet Stats).
         </p>
       )}
 
