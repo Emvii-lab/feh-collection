@@ -107,7 +107,7 @@ export function HeroDetail({
       onClick={onClose}
     >
       <div
-        className="relative flex max-h-[94vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-gold/30 bg-[#33291a] font-feh shadow-[0_20px_60px_-15px_rgba(0,0,0,0.8)] md:h-[850px] md:flex-row"
+        className="relative flex max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-gold/30 bg-[#33291a] font-feh shadow-[0_20px_60px_-15px_rgba(0,0,0,0.8)] md:h-[850px] md:flex-row"
         onClick={(e) => e.stopPropagation()}
       >
         {/* bouton fermer (niveau modal) */}
@@ -169,7 +169,7 @@ export function HeroDetail({
               setArtIndex(0);
               setGallery(true);
             }}
-            className="absolute left-3 top-3 z-20 transition hover:brightness-110 active:scale-95"
+            className="absolute left-2 top-3 z-20 transition hover:brightness-110 active:scale-95"
             aria-label="Voir les illustrations"
             title="Voir les illustrations"
           >
@@ -181,7 +181,7 @@ export function HeroDetail({
           </button>
 
           {/* icônes type d'arme + déplacement (+ élément), sous la loupe */}
-          <div className="absolute left-4 top-[74px] z-20 flex flex-col gap-2.5 drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]">
+          <div className="absolute left-2 top-[74px] z-20 flex flex-col gap-2.5 drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]">
             <WeaponIcon type={hero.weaponType} iconUrl={hero.weaponUrl} size={46} />
             <MoveIcon type={hero.moveType} iconUrl={hero.moveUrl} size={46} />
             {hero.elementUrl ? (
@@ -221,7 +221,7 @@ export function HeroDetail({
           hero.cvNameJa ||
           hero.illustratorName ||
           hero.illustratorNameJa ? (
-            <div className="absolute bottom-3 left-4 z-20 flex max-w-[200px] flex-col gap-1.5">
+            <div className="absolute bottom-3 left-2 z-20 flex max-w-[168px] flex-col gap-1.5">
               <Credit
                 icon="/feh/ui/voice.png"
                 alt="Voix"
