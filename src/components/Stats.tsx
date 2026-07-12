@@ -18,19 +18,35 @@ function tally(heroes: Hero[], owned: Set<string>, key: (h: Hero) => string) {
   return m;
 }
 
+// Tous les jeux commencent par « Fire Emblem » → on retire ce préfixe commun
+// pour ne garder que la partie distinctive (ex. « Fire Emblem: Three Houses »
+// → « Three Houses »). « Fire Emblem » tout court est conservé tel quel.
+function shortOrigin(o: string): string {
+  const s = o.replace(/^Fire Emblem\s*:?\s*/i, '').trim();
+  return s || o;
+}
+
 function Bar({
   label,
   data,
   fill,
+  labelWidth = 88,
+  title,
 }: {
   label: string;
   data: Bucket;
   fill: string;
+  labelWidth?: number; // largeur du libellé en px (plus large pour les noms de jeux)
+  title?: string; // infobulle (nom complet si le libellé est raccourci)
 }) {
   const pct = data.total ? (data.owned / data.total) * 100 : 0;
   return (
     <div className="flex items-center gap-3">
-      <span className="w-[88px] shrink-0 truncate text-[13px] text-warm-dim">
+      <span
+        className="shrink-0 truncate text-[13px] text-warm-dim"
+        style={{ width: labelWidth }}
+        title={title ?? label}
+      >
         {label}
       </span>
       <div className="relative h-2.5 flex-1 overflow-hidden rounded-full bg-black/45">
@@ -144,7 +160,14 @@ export function Stats({
 
         <Panel title="Par jeu d'origine (top 12)">
           {byOrigin.slice(0, 12).map(([o, d]) => (
-            <Bar key={o} label={o || '—'} data={d} fill={GOLD} />
+            <Bar
+              key={o}
+              label={shortOrigin(o) || '—'}
+              title={o || '—'}
+              data={d}
+              fill={GOLD}
+              labelWidth={168}
+            />
           ))}
         </Panel>
       </div>
