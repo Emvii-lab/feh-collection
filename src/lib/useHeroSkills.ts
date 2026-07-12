@@ -14,7 +14,6 @@ export type SkillRow = {
   weapon_effectiveness_url: string | null;
   scategory_url: string | null;
   required: string | null; // wiki_name de la compétence prérequise (chaîne d'amélioration)
-  skill_pos: number | null;
   unlock_rarity: number | null; // rareté (étoiles) à laquelle le héros débloque la compétence
 };
 
@@ -33,15 +32,13 @@ export function useHeroSkills(heroId: string | null, enabled = true) {
     (async () => {
       const { data: learn } = await supabase
         .from('hero_learnset')
-        .select('skill_name, skill_pos, unlock_rarity')
+        .select('skill_name, unlock_rarity')
         .eq('hero_id', heroId);
-      const posByName = new Map<string, number | null>();
       const rarByName = new Map<string, number | null>();
       for (const r of learn ?? []) {
-        posByName.set(r.skill_name as string, r.skill_pos as number | null);
         rarByName.set(r.skill_name as string, r.unlock_rarity as number | null);
       }
-      const names = [...posByName.keys()].filter(Boolean);
+      const names = [...rarByName.keys()].filter(Boolean);
       if (names.length === 0) {
         if (active) {
           setSkills([]);
@@ -58,8 +55,7 @@ export function useHeroSkills(heroId: string | null, enabled = true) {
       const rows = (sk ?? []).map((s) => {
         const wn = (s as { wiki_name: string }).wiki_name;
         return {
-          ...(s as Omit<SkillRow, 'skill_pos' | 'unlock_rarity'>),
-          skill_pos: posByName.get(wn) ?? null,
+          ...(s as Omit<SkillRow, 'unlock_rarity'>),
           unlock_rarity: rarByName.get(wn) ?? null,
         };
       });
