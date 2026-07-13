@@ -19,6 +19,14 @@ import { Login } from './components/Login';
 type OwnFilter = 'all' | 'owned' | 'missing';
 const COLORS: Color[] = ['red', 'blue', 'green', 'colorless'];
 
+// Minuscule + suppression des accents/diacritiques → « Fáfnir » devient « fafnir »,
+// pour qu'une recherche « faf » (sans accent) trouve quand même le héros.
+const normalize = (s: string) =>
+  s
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '');
+
 const RAIL = [
   { key: 'heroes', label: 'Héros', icon: 'shield' },
   { key: 'equipe', label: 'Équipe', icon: 'swords' },
@@ -164,16 +172,16 @@ export default function App() {
   };
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = normalize(query.trim());
     const list = heroes.filter((h) => {
       if (colorFilter && h.color !== colorFilter) return false;
       if (ownFilter === 'owned' && !owned.has(h.id)) return false;
       if (ownFilter === 'missing' && owned.has(h.id)) return false;
       if (!q) return true;
       return (
-        h.name.toLowerCase().includes(q) ||
-        h.title.toLowerCase().includes(q) ||
-        h.origin.toLowerCase().includes(q)
+        normalize(h.name).includes(q) ||
+        normalize(h.title).includes(q) ||
+        normalize(h.origin).includes(q)
       );
     });
     if (sortStat === 'release') {
