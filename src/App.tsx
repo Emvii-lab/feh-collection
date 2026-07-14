@@ -19,11 +19,27 @@ import { Login } from './components/Login';
 type OwnFilter = 'all' | 'owned' | 'missing';
 const COLORS: Color[] = ['red', 'blue', 'green', 'colorless'];
 
-// Minuscule + suppression des accents/diacritiques → « Fáfnir » devient « fafnir »,
-// pour qu'une recherche « faf » (sans accent) trouve quand même le héros.
+// Lettres spéciales (surtout nordiques, fréquentes dans FEH) qui ne se
+// décomposent PAS via NFD car ce sont des lettres à part entière et non des
+// lettres accentuées : on les translittère à la main.
+const SPECIAL_CHARS: Record<string, string> = {
+  æ: 'ae',
+  œ: 'oe',
+  ð: 'd', // eth → d (ex. « Læraðr » → « laeradr », « Höðr » → « hodr »)
+  þ: 'th', // thorn (ex. « Eikþyrnir » → « eikthyrnir »)
+  ø: 'o',
+  ł: 'l',
+  ß: 'ss',
+  đ: 'd',
+};
+
+// Minuscule + translittération des lettres spéciales + suppression des
+// accents/diacritiques → « Fáfnir » devient « fafnir », « Læraðr » devient
+// « laeradr », pour qu'une recherche sans caractère spécial trouve le héros.
 const normalize = (s: string) =>
   s
     .toLowerCase()
+    .replace(/[æœðþøłßđ]/g, (c) => SPECIAL_CHARS[c] ?? c)
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '');
 
