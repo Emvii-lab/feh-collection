@@ -63,11 +63,13 @@ export function HeroCard({
         <span
           title="Niveau 40 (max)"
           aria-label="Niveau 40"
-          className="pointer-events-none absolute left-1/2 top-0 z-20 rounded-t-md px-2.5 py-[3px] font-feh text-[10px] font-bold leading-none tracking-[0.5px] text-[#3a2a06] shadow-[0_-1px_3px_rgba(0,0,0,.45)] ring-1 ring-[rgba(255,244,214,.7)]"
+          className="pointer-events-none absolute left-1/2 top-0 z-20 rounded-t-md px-2.5 py-[3px] font-feh text-[10.5px] font-bold leading-none tracking-[0.5px] text-[#3a2a06] shadow-[0_-1px_3px_rgba(0,0,0,.45)] ring-1 ring-[rgba(255,244,214,.7)]"
           style={{
             background: 'linear-gradient(180deg,#ffe9a8,#e8c45e 58%,#b78a2e)',
             // bas de l'onglet posé PILE sur le bord haut du cadre (tout au-dessus)
             transform: 'translate(-50%, calc(-100% - 1px))',
+            // la police FEH plafonne à 700 : on épaissit les traits pour un vrai gras
+            WebkitTextStroke: '0.4px #3a2a06',
           }}
         >
           NIV. 40
