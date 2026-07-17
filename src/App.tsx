@@ -500,6 +500,7 @@ export default function App() {
                     onToggleOwned={() => toggle(h.id)}
                     rarityIcons={rarityIcons}
                     copyRarity={stats.get(h.id)?.rarity ?? null}
+                    maxLevel={stats.get(h.id)?.LVL === 40}
                   />
                 ))}
               </div>

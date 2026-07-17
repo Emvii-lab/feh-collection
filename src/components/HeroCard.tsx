@@ -11,6 +11,7 @@ export function HeroCard({
   onToggleOwned,
   rarityIcons,
   copyRarity,
+  maxLevel,
 }: {
   hero: Hero;
   owned: boolean;
@@ -19,6 +20,7 @@ export function HeroCard({
   onToggleOwned: () => void;
   rarityIcons: Map<number, string>;
   copyRarity?: number | null;
+  maxLevel?: boolean; // exemplaire monté au niveau 40 (max)
 }) {
   // Rareté affichée = mon exemplaire si renseigné, sinon rareté max du héros.
   const displayRarity = copyRarity ?? hero.rarity;
@@ -52,11 +54,27 @@ export function HeroCard({
       onClick={owned ? onOpen : undefined}
       aria-disabled={!owned}
       style={{ boxShadow: cardShadow, borderColor }}
-      className={`group relative overflow-hidden rounded-2xl border bg-white/[0.02] p-0 text-left transition-all duration-150 ${
+      className={`group relative rounded-2xl border bg-white/[0.02] p-0 text-left transition-all duration-150 ${
         owned ? 'cursor-pointer hover:-translate-y-[3px]' : 'cursor-default'
       } ${selected ? '-translate-y-[3px]' : ''}`}
     >
-      <div className="relative aspect-[1/1.06] overflow-hidden bg-[rgba(14,10,7,.72)]">
+      {/* marqueur niveau 40 (max) : onglet qui dépasse AU-DESSUS du cadre */}
+      {maxLevel ? (
+        <span
+          title="Niveau 40 (max)"
+          aria-label="Niveau 40"
+          className="pointer-events-none absolute left-1/2 top-0 z-20 rounded-t-md px-2.5 py-[3px] font-feh text-[10px] font-bold leading-none tracking-[0.5px] text-[#3a2a06] shadow-[0_-1px_3px_rgba(0,0,0,.45)] ring-1 ring-[rgba(255,244,214,.7)]"
+          style={{
+            background: 'linear-gradient(180deg,#ffe9a8,#e8c45e 58%,#b78a2e)',
+            // bas de l'onglet posé PILE sur le bord haut du cadre (tout au-dessus)
+            transform: 'translate(-50%, calc(-100% - 1px))',
+          }}
+        >
+          NIV. 40
+        </span>
+      ) : null}
+
+      <div className="relative aspect-[1/1.06] overflow-hidden rounded-2xl bg-[rgba(14,10,7,.72)]">
         <div className="absolute inset-x-0 top-0 bottom-[62px]">
           <HeroPortrait
             hero={hero}
