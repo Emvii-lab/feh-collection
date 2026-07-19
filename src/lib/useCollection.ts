@@ -73,11 +73,12 @@ export function useCollection(userId: string | null) {
   // Obtenir la tenue implique de posséder le héros → on l'ajoute à la collection.
   const toggleResplendent = useCallback(
     (heroId: string) => {
-      let willHave = false;
+      // Valeur cible calculée depuis l'état courant (pas dans l'updater setState,
+      // qui s'exécute plus tard → on persisterait une valeur périmée).
+      const willHave = !stats.get(heroId)?.resplendent;
       setStats((prev) => {
         const next = new Map(prev);
         const cur = next.get(heroId);
-        willHave = !cur?.resplendent;
         next.set(heroId, {
           LVL: cur?.LVL ?? null,
           PV: cur?.PV ?? null,
@@ -95,7 +96,7 @@ export function useCollection(userId: string | null) {
         console.warn('Persistance tenue resplendissante échouée', e),
       );
     },
-    [userId],
+    [stats, userId],
   );
 
   return { owned, stats, toggle, toggleResplendent, loading, refetch };
