@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   fetchCollection,
   setOwned as persistOwned,
+  setResplendentObtained as persistResplendent,
   type CollStats,
 } from './collection';
 
@@ -29,6 +30,7 @@ export function useCollection(userId: string | null) {
           DEF: r.DEF,
           RES: r.RES,
           rarity: r.rarity,
+          resplendent: r.resplendent,
         });
       }
       setStats(m);
@@ -67,5 +69,34 @@ export function useCollection(userId: string | null) {
     [userId],
   );
 
-  return { owned, stats, toggle, loading, refetch };
+  // Bascule « tenue resplendissante obtenue » pour un héros (persisté Supabase).
+  // Obtenir la tenue implique de posséder le héros → on l'ajoute à la collection.
+  const toggleResplendent = useCallback(
+    (heroId: string) => {
+      let willHave = false;
+      setStats((prev) => {
+        const next = new Map(prev);
+        const cur = next.get(heroId);
+        willHave = !cur?.resplendent;
+        next.set(heroId, {
+          LVL: cur?.LVL ?? null,
+          PV: cur?.PV ?? null,
+          ATQ: cur?.ATQ ?? null,
+          VIT: cur?.VIT ?? null,
+          DEF: cur?.DEF ?? null,
+          RES: cur?.RES ?? null,
+          rarity: cur?.rarity ?? null,
+          resplendent: willHave,
+        });
+        return next;
+      });
+      if (willHave) setOwnedSet((prev) => new Set(prev).add(heroId));
+      persistResplendent(heroId, userId, willHave).catch((e) =>
+        console.warn('Persistance tenue resplendissante échouée', e),
+      );
+    },
+    [userId],
+  );
+
+  return { owned, stats, toggle, toggleResplendent, loading, refetch };
 }

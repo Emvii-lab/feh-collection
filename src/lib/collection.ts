@@ -19,6 +19,22 @@ function writeLocal(owned: Set<string>) {
   localStorage.setItem(LS_KEY, JSON.stringify([...owned]));
 }
 
+// Tenues resplendissantes obtenues (mode local, sans Supabase).
+const LS_RESP_KEY = 'feh.collection.resplendent';
+
+function readLocalResp(): Set<string> {
+  try {
+    const raw = localStorage.getItem(LS_RESP_KEY);
+    return new Set(raw ? (JSON.parse(raw) as string[]) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function writeLocalResp(ids: Set<string>) {
+  localStorage.setItem(LS_RESP_KEY, JSON.stringify([...ids]));
+}
+
 // Stats de collection (propres à l'utilisateur, par héros).
 export type CollStats = {
   LVL: number | null;
@@ -28,6 +44,7 @@ export type CollStats = {
   DEF: number | null;
   RES: number | null;
   rarity: number | null; // étoiles de MON exemplaire (1..5), null = non renseigné
+  resplendent: boolean; // tenue resplendissante obtenue (resplendent_art_obtained)
 };
 
 export const STAT_COLS = ['LVL', 'PV', 'ATQ', 'VIT', 'DEF', 'RES'] as const;
@@ -43,15 +60,23 @@ export async function fetchHeroStats(
     .eq('hero_id', heroId)
     .maybeSingle();
   if (error || !data) return null;
-  // rareté récupérée à part et tolérante (n'échoue pas si la colonne n'existe pas encore).
-  let rarity: number | null = null;
+  // rareté + tenue resp. récupérées à part et tolérantes (n'échoue pas si absentes).
   const { data: rr } = await supabase
     .from('collection')
-    .select('rarity')
+    .select('rarity, resplendent_art_obtained')
     .eq('hero_id', heroId)
     .maybeSingle();
-  rarity = (rr as { rarity: number | null } | null)?.rarity ?? null;
-  return { ...(data as unknown as Omit<CollStats, 'rarity'>), rarity };
+  const meta = rr as {
+    rarity: number | null;
+    resplendent_art_obtained: boolean | null;
+  } | null;
+  const rarity = meta?.rarity ?? null;
+  const resplendent = Boolean(meta?.resplendent_art_obtained);
+  return {
+    ...(data as unknown as Omit<CollStats, 'rarity' | 'resplendent'>),
+    rarity,
+    resplendent,
+  };
 }
 
 // Enregistre les stats (upsert : crée la ligne de collection si besoin → possédé).
@@ -96,10 +121,12 @@ export function statTotal(s: Partial<CollStats> | undefined | null): number {
 // Récupère toute la collection de l'utilisateur (hero_id + stats) en une requête.
 export async function fetchCollection(): Promise<CollRow[]> {
   if (supabase) {
-    // Essaie avec rarity ; repli sans si la colonne n'existe pas encore.
+    // Essaie avec rarity + tenue resp. ; repli sans si les colonnes n'existent pas.
     let res = await supabase
       .from('collection')
-      .select(['hero_id', ...STAT_COLS, 'rarity'].join(','));
+      .select(
+        ['hero_id', ...STAT_COLS, 'rarity', 'resplendent_art_obtained'].join(','),
+      );
     if (res.error)
       res = await supabase
         .from('collection')
@@ -107,6 +134,10 @@ export async function fetchCollection(): Promise<CollRow[]> {
     if (!res.error)
       return (res.data ?? []).map((r) => ({
         rarity: null,
+        resplendent: Boolean(
+          (r as { resplendent_art_obtained?: boolean | null })
+            .resplendent_art_obtained,
+        ),
         ...(r as object),
       })) as unknown as CollRow[];
     console.warn('Collection indisponible :', res.error.message);
@@ -120,7 +151,35 @@ export async function fetchCollection(): Promise<CollRow[]> {
     DEF: null,
     RES: null,
     rarity: null,
+    resplendent: readLocalResp().has(hero_id),
   }));
+}
+
+// Marque (ou retire) la tenue resplendissante comme obtenue pour ce héros.
+// upsert : crée la ligne de collection si besoin (le héros devient possédé).
+export async function setResplendentObtained(
+  heroId: string,
+  userId: string | null,
+  obtained: boolean,
+): Promise<string | null> {
+  if (supabase && userId) {
+    const { error } = await supabase
+      .from('collection')
+      .upsert(
+        {
+          hero_id: heroId,
+          user_id: userId,
+          resplendent_art_obtained: obtained,
+        },
+        { onConflict: 'user_id,hero_id' },
+      );
+    return error ? error.message : null;
+  }
+  const set = readLocalResp();
+  if (obtained) set.add(heroId);
+  else set.delete(heroId);
+  writeLocalResp(set);
+  return null;
 }
 
 export async function setOwned(

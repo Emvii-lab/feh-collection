@@ -36,6 +36,7 @@ export function HeroDetail({
   onClose,
   userId,
   copyRarity,
+  resplendentObtained,
   sealPick,
   onSaved,
 }: {
@@ -43,6 +44,7 @@ export function HeroDetail({
   onClose: () => void;
   userId: string | null;
   copyRarity?: number | null; // rareté de MON exemplaire (prioritaire sur la rareté max)
+  resplendentObtained?: boolean; // tenue resplendissante obtenue (collection)
   sealPick?: SealPick | null; // sceau attribué à ce héros par la répartition globale
   onSaved?: () => void;
 }) {
@@ -53,7 +55,8 @@ export function HeroDetail({
       hero.artResplendentSpecial ||
       hero.artResplendentInjured,
   );
-  const [resplendent, setResplendent] = useState(false);
+  // Si la tenue est obtenue, on l'affiche par défaut à l'ouverture de la fiche.
+  const [resplendent, setResplendent] = useState(Boolean(resplendentObtained));
   const showResp = resplendent && hasResplendent;
 
   // Étoiles : rareté de mon exemplaire si renseignée, sinon rareté max du héros.

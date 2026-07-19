@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import type { Hero } from '../types';
 import { HeroPortrait } from './HeroPortrait';
 import { RarityStars } from './icons';
@@ -12,6 +11,8 @@ export function HeroCard({
   rarityIcons,
   copyRarity,
   maxLevel,
+  resplendentObtained,
+  onToggleResplendent,
 }: {
   hero: Hero;
   owned: boolean;
@@ -21,6 +22,8 @@ export function HeroCard({
   rarityIcons: Map<number, string>;
   copyRarity?: number | null;
   maxLevel?: boolean; // exemplaire monté au niveau 40 (max)
+  resplendentObtained?: boolean; // tenue resplendissante obtenue (collection)
+  onToggleResplendent?: () => void;
 }) {
   // Rareté affichée = mon exemplaire si renseigné, sinon rareté max du héros.
   const displayRarity = copyRarity ?? hero.rarity;
@@ -33,10 +36,10 @@ export function HeroCard({
       hero.artResplendentInjured ||
       hero.spriteResplendent,
   );
-  // On ne peut basculer le sprite de la carte que si le sprite resp. existe.
-  const canToggleSprite = Boolean(hero.spriteResplendent);
-  const [respSprite, setRespSprite] = useState(false);
-  const showRespSprite = respSprite && canToggleSprite;
+  // Cliquer sur le badge marque la tenue comme obtenue (seulement pour un héros possédé).
+  const canToggleResplendent = owned && hasResplendent;
+  // Sprite resplendissant affiché sur la carte quand la tenue est obtenue (si dispo).
+  const showRespSprite = Boolean(resplendentObtained && hero.spriteResplendent);
 
   const cardShadow = selected
     ? '0 0 0 2px rgba(232,196,94,.95), 0 8px 26px rgba(180,120,20,.4)'
@@ -89,18 +92,21 @@ export function HeroCard({
         {/* dégradé bas pour lisibilité du texte */}
         <div className="absolute inset-x-0 bottom-0 h-[82px] bg-gradient-to-b from-transparent via-[rgba(14,10,7,.88)] to-[rgba(14,10,7,.96)]" />
 
-        {/* badge tenue resplendissante : cliquable pour basculer le sprite si dispo */}
+        {/* badge tenue resplendissante : cliquable (héros possédé) pour marquer la tenue obtenue */}
         {hasResplendent ? (
-          canToggleSprite ? (
+          canToggleResplendent ? (
             <span
               role="button"
-              aria-label="Basculer le sprite resplendissant"
+              aria-label="Marquer la tenue resplendissante comme obtenue"
+              aria-pressed={Boolean(resplendentObtained)}
               title={
-                showRespSprite ? 'Sprite normal' : 'Sprite resplendissant'
+                resplendentObtained
+                  ? 'Tenue resplendissante obtenue (cliquer pour retirer)'
+                  : 'Marquer la tenue resplendissante comme obtenue'
               }
               onClick={(e) => {
                 e.stopPropagation();
-                setRespSprite((v) => !v);
+                onToggleResplendent?.();
               }}
               className="absolute left-2 top-2 cursor-pointer transition hover:brightness-110 active:scale-95"
             >
@@ -108,9 +114,9 @@ export function HeroCard({
                 src="/feh/ui/alternate_art.png"
                 alt="Tenue resplendissante"
                 className={`h-9 w-9 object-contain ${
-                  showRespSprite
+                  resplendentObtained
                     ? 'drop-shadow-[0_0_6px_rgba(251,230,166,0.9)]'
-                    : 'drop-shadow-[0_1px_3px_rgba(0,0,0,.6)]'
+                    : 'opacity-70 grayscale drop-shadow-[0_1px_3px_rgba(0,0,0,.6)]'
                 }`}
               />
             </span>
@@ -119,7 +125,11 @@ export function HeroCard({
               src="/feh/ui/alternate_art.png"
               alt="Tenue resplendissante"
               title="Tenue resplendissante"
-              className="absolute left-2 top-2 h-9 w-9 object-contain drop-shadow-[0_1px_3px_rgba(0,0,0,.6)]"
+              className={`absolute left-2 top-2 h-9 w-9 object-contain ${
+                resplendentObtained
+                  ? 'drop-shadow-[0_0_6px_rgba(251,230,166,0.9)]'
+                  : 'opacity-70 grayscale drop-shadow-[0_1px_3px_rgba(0,0,0,.6)]'
+              }`}
             />
           )
         ) : null}

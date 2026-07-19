@@ -146,7 +146,9 @@ export default function App() {
       : 'release';
   });
   const { user, loading: authLoading } = useAuth();
-  const { owned, stats, toggle, refetch } = useCollection(user?.id ?? null);
+  const { owned, stats, toggle, toggleResplendent, refetch } = useCollection(
+    user?.id ?? null,
+  );
   const heroes = useHeroes();
   const rarityIcons = useRarityIcons();
   // Répartition des sceaux : chaque sceau unique va à un seul héros 5★+.
@@ -501,6 +503,8 @@ export default function App() {
                     rarityIcons={rarityIcons}
                     copyRarity={stats.get(h.id)?.rarity ?? null}
                     maxLevel={stats.get(h.id)?.LVL === 40}
+                    resplendentObtained={stats.get(h.id)?.resplendent ?? false}
+                    onToggleResplendent={() => toggleResplendent(h.id)}
                   />
                 ))}
               </div>
@@ -537,6 +541,7 @@ export default function App() {
           onClose={() => setSelected(null)}
           userId={user.id}
           copyRarity={stats.get(selected.id)?.rarity ?? null}
+          resplendentObtained={stats.get(selected.id)?.resplendent ?? false}
           sealPick={sealAlloc.get(selected.id) ?? null}
           onSaved={refetch}
         />
