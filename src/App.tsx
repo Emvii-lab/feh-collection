@@ -147,8 +147,10 @@ export default function App() {
       : 'release';
   });
   const { user, loading: authLoading } = useAuth();
-  // Compte dont on affiche la collection (null = la mienne).
-  const [viewUserId, setViewUserId] = useState<string | null>(null);
+  // Compte dont on affiche la collection (null = la mienne). Persisté au rechargement.
+  const [viewUserId, setViewUserId] = useState<string | null>(
+    () => localStorage.getItem('feh.viewUserId') || null,
+  );
   const profiles = useProfiles();
   const { owned, stats, toggle, toggleResplendent, refetch, readOnly } =
     useCollection(user?.id ?? null, viewUserId);
@@ -175,6 +177,21 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('feh.sortStat', sortStat);
   }, [sortStat]);
+  useEffect(() => {
+    if (viewUserId) localStorage.setItem('feh.viewUserId', viewUserId);
+    else localStorage.removeItem('feh.viewUserId');
+  }, [viewUserId]);
+  // Compte consulté restauré mais introuvable (supprimé, plus accessible) → retour à ma collection.
+  useEffect(() => {
+    if (
+      viewUserId &&
+      viewUserId !== user?.id &&
+      profiles.length > 0 &&
+      !profiles.some((p) => p.id === viewUserId)
+    ) {
+      setViewUserId(null);
+    }
+  }, [viewUserId, profiles, user?.id]);
 
   const ownedCount = owned.size;
   const total = heroes.length;
