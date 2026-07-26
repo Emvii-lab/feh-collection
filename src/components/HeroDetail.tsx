@@ -35,6 +35,7 @@ export function HeroDetail({
   hero,
   onClose,
   userId,
+  readOnly,
   copyRarity,
   resplendentObtained,
   sealPick,
@@ -43,6 +44,7 @@ export function HeroDetail({
   hero: Hero;
   onClose: () => void;
   userId: string | null;
+  readOnly?: boolean; // consultation d'une autre collection : pas d'édition
   copyRarity?: number | null; // rareté de MON exemplaire (prioritaire sur la rareté max)
   resplendentObtained?: boolean; // tenue resplendissante obtenue (collection)
   sealPick?: SealPick | null; // sceau attribué à ce héros par la répartition globale
@@ -320,6 +322,7 @@ export function HeroDetail({
           <CollectionStats
             heroId={hero.id}
             userId={userId}
+            readOnly={readOnly}
             onSaved={onSaved}
           />
         ) : (
@@ -328,6 +331,7 @@ export function HeroDetail({
             skills={skills}
             loading={skillsLoading}
             heroId={hero.id}
+            userId={userId}
             sealPick={sealPick ?? null}
           />
         ) : (

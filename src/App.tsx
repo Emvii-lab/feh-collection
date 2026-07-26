@@ -11,6 +11,7 @@ import { Settings } from './components/Settings';
 import { statTotal } from './lib/collection';
 import { COLOR_LABEL } from './theme';
 import { useCollection } from './lib/useCollection';
+import { useProfiles } from './lib/useProfiles';
 import { allocateSeals } from './lib/seals';
 import { isSupabaseConfigured } from './lib/supabase';
 import { useAuth, signOut } from './lib/useAuth';
@@ -146,9 +147,11 @@ export default function App() {
       : 'release';
   });
   const { user, loading: authLoading } = useAuth();
-  const { owned, stats, toggle, toggleResplendent, refetch } = useCollection(
-    user?.id ?? null,
-  );
+  // Compte dont on affiche la collection (null = la mienne).
+  const [viewUserId, setViewUserId] = useState<string | null>(null);
+  const profiles = useProfiles();
+  const { owned, stats, toggle, toggleResplendent, refetch, readOnly } =
+    useCollection(user?.id ?? null, viewUserId);
   const heroes = useHeroes();
   const rarityIcons = useRarityIcons();
   // Répartition des sceaux : chaque sceau unique va à un seul héros 5★+.
@@ -175,6 +178,10 @@ export default function App() {
 
   const ownedCount = owned.size;
   const total = heroes.length;
+  // Email du compte consulté (null si je regarde ma propre collection).
+  const viewedEmail = viewUserId
+    ? (profiles.find((p) => p.id === viewUserId)?.email ?? 'un autre compte')
+    : null;
   const filterColorIconByColor = useMemo(() => {
     const icons = new Map<Color, string>();
     for (const hero of heroes) {
@@ -272,7 +279,9 @@ export default function App() {
             Catalogue des Héros
           </div>
           <div className="txt-stroke-sm mt-[4px] text-[11.5px] font-semibold">
-            Ordre d'Askr · {ownedCount} / {total} obtenus
+            {viewedEmail
+              ? `Collection de ${viewedEmail} · ${ownedCount} / ${total} · lecture seule`
+              : `Ordre d'Askr · ${ownedCount} / ${total} obtenus`}
           </div>
         </div>
 
@@ -485,7 +494,41 @@ export default function App() {
                 <div className="text-[13.5px] text-warm-dim">
                   {filtered.length} héros
                 </div>
+
+                {/* sélecteur : voir la collection d'un autre compte (lecture seule) */}
+                {profiles.some((p) => p.id !== user.id) ? (
+                  <div className="ml-auto flex items-center gap-2">
+                    <span className="text-[12.5px] text-warm-dim">
+                      Collection :
+                    </span>
+                    <select
+                      value={viewUserId ?? ''}
+                      onChange={(e) => setViewUserId(e.target.value || null)}
+                      title="Voir la collection d'un autre compte"
+                      className="max-w-[220px] rounded-lg border border-white/10 bg-black/40 px-2.5 py-1.5 text-[12.5px] text-warm-text outline-none focus:border-gold/50"
+                    >
+                      <option value="">Ma collection</option>
+                      {profiles
+                        .filter((p) => p.id !== user.id)
+                        .map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.email ?? p.id}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                ) : null}
               </div>
+
+              {/* bandeau : consultation en lecture seule */}
+              {readOnly ? (
+                <div className="mb-5 flex items-center gap-2 rounded-lg border border-sky-400/30 bg-sky-400/10 px-3 py-2 text-[12.5px] text-sky-100">
+                  <span aria-hidden>👁️</span>
+                  Tu consultes la collection de{' '}
+                  <strong className="font-semibold">{viewedEmail}</strong> —
+                  lecture seule, aucune modification enregistrée.
+                </div>
+              ) : null}
               <div
                 className="grid gap-4"
                 style={{
@@ -505,6 +548,7 @@ export default function App() {
                     maxLevel={stats.get(h.id)?.LVL === 40}
                     resplendentObtained={stats.get(h.id)?.resplendent ?? false}
                     onToggleResplendent={() => toggleResplendent(h.id)}
+                    readOnly={readOnly}
                   />
                 ))}
               </div>
@@ -539,7 +583,8 @@ export default function App() {
         <HeroDetail
           hero={selected}
           onClose={() => setSelected(null)}
-          userId={user.id}
+          userId={viewUserId ?? user.id}
+          readOnly={readOnly}
           copyRarity={stats.get(selected.id)?.rarity ?? null}
           resplendentObtained={stats.get(selected.id)?.resplendent ?? false}
           sealPick={sealAlloc.get(selected.id) ?? null}

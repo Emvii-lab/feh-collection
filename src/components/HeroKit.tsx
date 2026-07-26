@@ -157,22 +157,24 @@ export function HeroKit({
   skills,
   loading,
   heroId,
+  userId,
   sealPick,
 }: {
   skills: SkillRow[] | null;
   loading: boolean;
   heroId: string;
+  userId: string | null; // compte dont on lit les stats (soi-même ou compte consulté)
   sealPick?: SealPick | null; // sceau attribué par la répartition globale (unique)
 }) {
   const [stats, setStats] = useState<CollStats | null>(null);
   const [detail, setDetail] = useState<SkillRow | null>(null);
   useEffect(() => {
     let active = true;
-    fetchHeroStats(heroId).then((s) => active && setStats(s));
+    fetchHeroStats(heroId, userId).then((s) => active && setStats(s));
     return () => {
       active = false;
     };
-  }, [heroId]);
+  }, [heroId, userId]);
 
   // Raffinages disponibles pour la meilleure arme du héros.
   const [refinePaths, setRefinePaths] = useState<string[]>([]);

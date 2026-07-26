@@ -23,10 +23,12 @@ const EMPTY: Vals = { LVL: '', PV: '', ATQ: '', VIT: '', DEF: '', RES: '' };
 export function CollectionStats({
   heroId,
   userId,
+  readOnly,
   onSaved,
 }: {
   heroId: string;
   userId: string | null;
+  readOnly?: boolean; // consultation d'une autre collection : lecture seule
   onSaved?: () => void;
 }) {
   const [vals, setVals] = useState<Vals>(EMPTY);
@@ -40,7 +42,7 @@ export function CollectionStats({
     let active = true;
     setLoading(true);
     setMsg(null);
-    fetchHeroStats(heroId).then((s) => {
+    fetchHeroStats(heroId, userId).then((s) => {
       if (!active) return;
       const next = { ...EMPTY };
       if (s) {
@@ -55,7 +57,7 @@ export function CollectionStats({
     return () => {
       active = false;
     };
-  }, [heroId]);
+  }, [heroId, userId]);
 
   const set = (k: StatKey, v: string) =>
     setVals((p) => ({ ...p, [k]: v.replace(/[^0-9]/g, '') }));
@@ -90,8 +92,9 @@ export function CollectionStats({
   return (
     <div className="px-5 pb-5 pt-3">
       <p className="mb-3 text-[12px] text-warm-mute">
-        Tes stats pour ce héros (niveau, valeurs investies). Modifiables et
-        propres à ton compte.
+        {readOnly
+          ? 'Stats de ce héros pour le compte consulté (lecture seule).'
+          : 'Tes stats pour ce héros (niveau, valeurs investies). Modifiables et propres à ton compte.'}
       </p>
 
       {/* Rareté de mon exemplaire (étoiles) — au-dessus du niveau */}
@@ -107,9 +110,10 @@ export function CollectionStats({
               <button
                 key={n}
                 type="button"
+                disabled={readOnly}
                 onClick={() => setRarity(rarity === n ? null : n)}
                 aria-label={`${n} étoile${n > 1 ? 's' : ''}`}
-                className="transition hover:brightness-110"
+                className="transition hover:brightness-110 disabled:cursor-default disabled:hover:brightness-100"
               >
                 {url ? (
                   <img
@@ -133,6 +137,7 @@ export function CollectionStats({
           })}
           <button
             type="button"
+            disabled={readOnly}
             onClick={() => setRarity(rarity === 6 ? null : 6)}
             title="Forma (Salle des Formes) — 5 étoiles bleues"
             className={`ml-2 rounded-md border px-2 py-0.5 font-feh text-[11px] transition ${
@@ -155,8 +160,9 @@ export function CollectionStats({
           inputMode="numeric"
           value={vals.LVL}
           onChange={(e) => set('LVL', e.target.value)}
+          disabled={readOnly}
           placeholder="—"
-          className="w-20 rounded-lg border border-white/10 bg-black/40 px-3 py-1.5 text-center font-feh text-[14px] text-warm-text outline-none transition focus:border-gold/50 focus:ring-1 focus:ring-gold/30"
+          className="w-20 rounded-lg border border-white/10 bg-black/40 px-3 py-1.5 text-center font-feh text-[14px] text-warm-text outline-none transition focus:border-gold/50 focus:ring-1 focus:ring-gold/30 disabled:opacity-60"
         />
       </div>
 
@@ -171,8 +177,9 @@ export function CollectionStats({
               inputMode="numeric"
               value={vals[s.key]}
               onChange={(e) => set(s.key, e.target.value)}
+              disabled={readOnly}
               placeholder="—"
-              className="w-20 rounded-lg border border-white/10 bg-black/40 px-3 py-1.5 text-center font-feh text-[14px] text-warm-text outline-none transition focus:border-gold/50 focus:ring-1 focus:ring-gold/30"
+              className="w-20 rounded-lg border border-white/10 bg-black/40 px-3 py-1.5 text-center font-feh text-[14px] text-warm-text outline-none transition focus:border-gold/50 focus:ring-1 focus:ring-gold/30 disabled:opacity-60"
             />
           </div>
         ))}
@@ -188,13 +195,15 @@ export function CollectionStats({
       </div>
 
       <div className="mt-4 flex items-center gap-3">
-        <button
-          onClick={save}
-          disabled={saving || !userId}
-          className="feh-tab font-feh text-[13px] font-bold tracking-wide text-[#3a2a08] transition hover:brightness-110 disabled:opacity-60"
-        >
-          {saving ? '…' : 'Enregistrer'}
-        </button>
+        {readOnly ? null : (
+          <button
+            onClick={save}
+            disabled={saving || !userId}
+            className="feh-tab font-feh text-[13px] font-bold tracking-wide text-[#3a2a08] transition hover:brightness-110 disabled:opacity-60"
+          >
+            {saving ? '…' : 'Enregistrer'}
+          </button>
+        )}
         {msg ? (
           <span
             className={`text-[12.5px] ${

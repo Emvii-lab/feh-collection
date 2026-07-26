@@ -13,6 +13,7 @@ export function HeroCard({
   maxLevel,
   resplendentObtained,
   onToggleResplendent,
+  readOnly,
 }: {
   hero: Hero;
   owned: boolean;
@@ -24,6 +25,7 @@ export function HeroCard({
   maxLevel?: boolean; // exemplaire monté au niveau 40 (max)
   resplendentObtained?: boolean; // tenue resplendissante obtenue (collection)
   onToggleResplendent?: () => void;
+  readOnly?: boolean; // consultation d'une autre collection : pas d'édition
 }) {
   // Rareté affichée = mon exemplaire si renseigné, sinon rareté max du héros.
   const displayRarity = copyRarity ?? hero.rarity;
@@ -36,8 +38,8 @@ export function HeroCard({
       hero.artResplendentInjured ||
       hero.spriteResplendent,
   );
-  // Cliquer sur le badge marque la tenue comme obtenue (seulement pour un héros possédé).
-  const canToggleResplendent = owned && hasResplendent;
+  // Cliquer sur le badge marque la tenue comme obtenue (héros possédé, hors lecture seule).
+  const canToggleResplendent = owned && hasResplendent && !readOnly;
   // Sprite resplendissant affiché sur la carte quand la tenue est obtenue (si dispo).
   const showRespSprite = Boolean(resplendentObtained && hero.spriteResplendent);
 
@@ -134,8 +136,8 @@ export function HeroCard({
           )
         ) : null}
 
-        {/* statut possédé / ajouter */}
-        {owned ? (
+        {/* statut possédé / ajouter (masqué en lecture seule : pas d'édition d'autrui) */}
+        {readOnly ? null : owned ? (
           <span
             role="button"
             onClick={(e) => {

@@ -49,15 +49,17 @@ export type CollStats = {
 
 export const STAT_COLS = ['LVL', 'PV', 'ATQ', 'VIT', 'DEF', 'RES'] as const;
 
-// Récupère les stats du héros pour l'utilisateur connecté (RLS), ou null.
+// Récupère les stats du héros pour l'utilisateur `userId`, ou null.
 export async function fetchHeroStats(
   heroId: string,
+  userId: string | null,
 ): Promise<CollStats | null> {
-  if (!supabase) return null;
+  if (!supabase || !userId) return null;
   const { data, error } = await supabase
     .from('collection')
     .select(STAT_COLS.join(','))
     .eq('hero_id', heroId)
+    .eq('user_id', userId)
     .maybeSingle();
   if (error || !data) return null;
   // rareté + tenue resp. récupérées à part et tolérantes (n'échoue pas si absentes).
@@ -65,6 +67,7 @@ export async function fetchHeroStats(
     .from('collection')
     .select('rarity, resplendent_art_obtained')
     .eq('hero_id', heroId)
+    .eq('user_id', userId)
     .maybeSingle();
   const meta = rr as {
     rarity: number | null;
@@ -95,9 +98,12 @@ export async function saveHeroStats(
   return error ? error.message : null;
 }
 
-export async function fetchOwned(): Promise<Set<string>> {
-  if (supabase) {
-    const { data, error } = await supabase.from('collection').select('hero_id');
+export async function fetchOwned(userId: string | null): Promise<Set<string>> {
+  if (supabase && userId) {
+    const { data, error } = await supabase
+      .from('collection')
+      .select('hero_id')
+      .eq('user_id', userId);
     if (error) {
       console.warn('Supabase indisponible, repli localStorage :', error.message);
       return readLocal();
@@ -119,18 +125,22 @@ export function statTotal(s: Partial<CollStats> | undefined | null): number {
 }
 
 // Récupère toute la collection de l'utilisateur (hero_id + stats) en une requête.
-export async function fetchCollection(): Promise<CollRow[]> {
-  if (supabase) {
+export async function fetchCollection(
+  userId: string | null,
+): Promise<CollRow[]> {
+  if (supabase && userId) {
     // Essaie avec rarity + tenue resp. ; repli sans si les colonnes n'existent pas.
     let res = await supabase
       .from('collection')
       .select(
         ['hero_id', ...STAT_COLS, 'rarity', 'resplendent_art_obtained'].join(','),
-      );
+      )
+      .eq('user_id', userId);
     if (res.error)
       res = await supabase
         .from('collection')
-        .select(['hero_id', ...STAT_COLS].join(','));
+        .select(['hero_id', ...STAT_COLS].join(','))
+        .eq('user_id', userId);
     if (!res.error)
       return (res.data ?? []).map((r) => ({
         rarity: null,
@@ -209,4 +219,21 @@ export async function setOwned(
   if (owned) set.add(heroId);
   else set.delete(heroId);
   writeLocal(set);
+}
+
+// Un compte consultable (vue feh.profiles : id + email).
+export type Profile = { id: string; email: string | null };
+
+// Liste des comptes proposés au sélecteur « Voir la collection de … ».
+// Vide si Supabase n'est pas configuré ou si la vue profiles n'existe pas.
+export async function fetchProfiles(): Promise<Profile[]> {
+  if (!supabase) return [];
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, email');
+  if (error) {
+    console.warn('Liste des comptes indisponible :', error.message);
+    return [];
+  }
+  return (data ?? []) as Profile[];
 }

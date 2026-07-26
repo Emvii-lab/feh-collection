@@ -6,19 +6,32 @@ import {
   type CollStats,
 } from './collection';
 
-// Gère la collection de l'utilisateur connecté : héros possédés + leurs stats.
-export function useCollection(userId: string | null) {
+// Gère une collection : héros possédés + leurs stats.
+// - `ownUserId` : le compte connecté (celui qui peut écrire).
+// - `viewUserId` : le compte dont on AFFICHE la collection (défaut = soi-même).
+//   S'il diffère de `ownUserId`, on est en lecture seule (consultation).
+export function useCollection(
+  ownUserId: string | null,
+  viewUserId?: string | null,
+) {
   const [owned, setOwnedSet] = useState<Set<string>>(new Set());
   const [stats, setStats] = useState<Map<string, CollStats>>(new Map());
   const [loading, setLoading] = useState(true);
 
+  // Compte réellement affiché (par défaut : le mien).
+  const shownUserId = viewUserId ?? ownUserId;
+  // Lecture seule dès qu'on regarde la collection de quelqu'un d'autre.
+  const readOnly = Boolean(
+    shownUserId && ownUserId && shownUserId !== ownUserId,
+  );
+
   const load = useCallback(() => {
-    if (!userId) {
+    if (!shownUserId) {
       setOwnedSet(new Set());
       setStats(new Map());
       return Promise.resolve();
     }
-    return fetchCollection().then((rows) => {
+    return fetchCollection(shownUserId).then((rows) => {
       setOwnedSet(new Set(rows.map((r) => r.hero_id)));
       const m = new Map<string, CollStats>();
       for (const r of rows) {
@@ -35,7 +48,7 @@ export function useCollection(userId: string | null) {
       }
       setStats(m);
     });
-  }, [userId]);
+  }, [shownUserId]);
 
   // Recharge à chaque changement d'utilisateur (connexion/déconnexion).
   useEffect(() => {
@@ -55,24 +68,26 @@ export function useCollection(userId: string | null) {
 
   const toggle = useCallback(
     (heroId: string) => {
+      if (readOnly) return; // consultation : pas d'écriture sur la collection d'autrui
       setOwnedSet((prev) => {
         const next = new Set(prev);
         const willOwn = !next.has(heroId);
         if (willOwn) next.add(heroId);
         else next.delete(heroId);
-        persistOwned(heroId, willOwn, userId).catch((e) =>
+        persistOwned(heroId, willOwn, ownUserId).catch((e) =>
           console.warn('Persistance collection échouée', e),
         );
         return next;
       });
     },
-    [userId],
+    [ownUserId, readOnly],
   );
 
   // Bascule « tenue resplendissante obtenue » pour un héros (persisté Supabase).
   // Obtenir la tenue implique de posséder le héros → on l'ajoute à la collection.
   const toggleResplendent = useCallback(
     (heroId: string) => {
+      if (readOnly) return; // consultation : lecture seule
       // Valeur cible calculée depuis l'état courant (pas dans l'updater setState,
       // qui s'exécute plus tard → on persisterait une valeur périmée).
       const willHave = !stats.get(heroId)?.resplendent;
@@ -92,12 +107,12 @@ export function useCollection(userId: string | null) {
         return next;
       });
       if (willHave) setOwnedSet((prev) => new Set(prev).add(heroId));
-      persistResplendent(heroId, userId, willHave).catch((e) =>
+      persistResplendent(heroId, ownUserId, willHave).catch((e) =>
         console.warn('Persistance tenue resplendissante échouée', e),
       );
     },
-    [stats, userId],
+    [stats, ownUserId, readOnly],
   );
 
-  return { owned, stats, toggle, toggleResplendent, loading, refetch };
+  return { owned, stats, toggle, toggleResplendent, loading, refetch, readOnly };
 }
