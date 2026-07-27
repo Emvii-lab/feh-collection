@@ -27,9 +27,9 @@ const VOICE_CATS: { key: string; label: string; max: number }[] = [
 ];
 
 const FALLBACK_ART =
-  'https://supabase.emvii.fr/storage/v1/object/public/feh-assets/ui/unknown_hero_aswwcu.png';
+  'https://supabase.emvii.fr/storage/v1/object/public/feh-assets/Icons/unknown_hero_aswwcu.png';
 const LOUPE_ICON =
-  'https://supabase.emvii.fr/storage/v1/object/public/feh-assets/ui/loupe_ylabux.png';
+  'https://supabase.emvii.fr/storage/v1/object/public/feh-assets/Icons/loupe_ylabux.png';
 
 export function HeroDetail({
   hero,

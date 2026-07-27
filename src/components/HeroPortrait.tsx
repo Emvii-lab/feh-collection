@@ -15,7 +15,7 @@ export function HeroPortrait({
   imageUrl?: string;
 }) {
   const [failed, setFailed] = useState(false);
-  const fallbackUrl = 'https://supabase.emvii.fr/storage/v1/object/public/feh-assets/ui/unknown_hero_aswwcu.png';
+  const fallbackUrl = 'https://supabase.emvii.fr/storage/v1/object/public/feh-assets/Icons/unknown_hero_aswwcu.png';
   const resolvedImageUrl =
     !forceFallback && !failed && imageUrl && imageUrl.trim()
       ? imageUrl
