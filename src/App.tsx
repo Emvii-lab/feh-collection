@@ -552,9 +552,10 @@ export default function App() {
                   gridTemplateColumns: 'repeat(auto-fill, minmax(176px, 1fr))',
                 }}
               >
-                {shown.map((h) => (
+                {shown.map((h, i) => (
                   <HeroCard
                     key={h.id}
+                    index={i}
                     hero={h}
                     owned={owned.has(h.id)}
                     selected={selected?.id === h.id}
