@@ -362,11 +362,11 @@ export default function App() {
 
       {/* ===== Body ===== */}
       <div
-        className="relative z-[2] flex min-h-0 flex-1"
+        className="relative z-[2] flex min-h-0 flex-1 flex-col md:flex-row"
         style={{ backgroundColor: '#2a2218' }}
       >
-        {/* Rail gauche */}
-        <nav className="flex w-[96px] flex-none flex-col items-center gap-2 border-r border-white/[0.06] bg-[rgba(24,17,10,.4)] py-5">
+        {/* Navigation : barre horizontale en haut sur mobile, rail vertical à gauche sur desktop */}
+        <nav className="flex w-full flex-none flex-row items-center gap-1 overflow-x-auto border-b border-white/[0.06] bg-[rgba(24,17,10,.4)] px-2 py-2 md:w-[96px] md:flex-col md:gap-2 md:overflow-visible md:border-b-0 md:border-r md:px-0 md:py-5">
           {RAIL.map((t) => {
             const on = tab === t.key;
             const img = RAIL_IMG[t.key];
@@ -374,7 +374,7 @@ export default function App() {
               <button
                 key={t.key}
                 onClick={() => setTab(t.key)}
-                className={`flex w-[76px] flex-col items-center gap-1.5 py-[11px] transition ${
+                className={`flex w-[62px] flex-none flex-col items-center gap-1 py-2 transition md:w-[76px] md:gap-1.5 md:py-[11px] ${
                   img
                     ? 'rounded-2xl'
                     : on
@@ -386,7 +386,7 @@ export default function App() {
                   <img
                     src={img}
                     alt=""
-                    className={`h-11 w-11 object-contain transition ${
+                    className={`h-9 w-9 object-contain transition md:h-11 md:w-11 ${
                       on ? '' : 'opacity-55 grayscale hover:opacity-80'
                     }`}
                   />
@@ -394,7 +394,7 @@ export default function App() {
                   <RailIcon name={t.icon} color={on ? '#eaf6ff' : '#94866c'} />
                 )}
                 <span
-                  className="font-feh text-[11px] font-semibold drop-shadow-[0_1px_1px_rgba(0,0,0,.5)]"
+                  className="font-feh text-[10px] font-semibold drop-shadow-[0_1px_1px_rgba(0,0,0,.5)] md:text-[11px]"
                   style={{ color: on ? '#eaf6ff' : '#94866c' }}
                 >
                   {t.label}
@@ -407,7 +407,7 @@ export default function App() {
           <button
             onClick={() => signOut()}
             title={user.email ? `Connecté : ${user.email}` : 'Se déconnecter'}
-            className="mt-auto flex w-[76px] flex-col items-center gap-1.5 rounded-2xl py-[11px] transition hover:bg-white/[0.04]"
+            className="ml-auto flex w-[62px] flex-none flex-col items-center gap-1 rounded-2xl py-2 transition hover:bg-white/[0.04] md:ml-0 md:mt-auto md:w-[76px] md:gap-1.5 md:py-[11px]"
           >
             <RailIcon name="logout" color="#94866c" />
             <span
