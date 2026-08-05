@@ -112,7 +112,7 @@ export function HeroDetail({
       onClick={onClose}
     >
       <div
-        className="relative flex max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-gold/30 bg-[#33291a] font-feh shadow-[0_20px_60px_-15px_rgba(0,0,0,0.8)] md:h-[850px] md:flex-row"
+        className="relative flex max-h-[94vh] w-full max-w-6xl flex-col overflow-y-auto rounded-2xl border border-gold/30 bg-[#33291a] font-feh shadow-[0_20px_60px_-15px_rgba(0,0,0,0.8)] md:h-[850px] md:flex-row md:overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* bouton fermer (niveau modal) */}
@@ -125,9 +125,9 @@ export function HeroDetail({
         </button>
 
         {/* ===== PAGE GAUCHE : le héros + description + origine ===== */}
-        <div className="flex shrink-0 flex-col overflow-y-auto md:h-full md:w-[50%] md:rounded-l-2xl">
+        <div className="flex shrink-0 flex-col md:h-full md:w-[50%] md:overflow-y-auto md:rounded-l-2xl">
         <div
-          className="relative h-[460px] shrink-0 overflow-hidden md:h-[600px]"
+          className="relative h-[360px] shrink-0 overflow-hidden sm:h-[440px] md:h-[600px]"
           style={{
             backgroundImage: 'url(/feh/ui/detail_bg.png)',
             backgroundSize: 'cover',
@@ -299,8 +299,8 @@ export function HeroDetail({
 
         </div>
 
-        {/* ===== PAGE DROITE : onglets (scroll indépendant) ===== */}
-        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto pt-3 md:shadow-[inset_10px_0_16px_-10px_rgba(0,0,0,0.55)]">
+        {/* ===== PAGE DROITE : onglets (scroll indépendant sur desktop) ===== */}
+        <div className="flex flex-col pt-3 md:min-h-0 md:flex-1 md:overflow-y-auto md:shadow-[inset_10px_0_16px_-10px_rgba(0,0,0,0.55)]">
         {/* onglets : Stats / Voix */}
         <div className="flex gap-2 px-5 pt-3">
           {(['stats', 'kit', 'voix'] as const).map((t) => (
