@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useHeroes } from './lib/useHeroes';
 import type { Color, Hero } from './types';
 import { HeroCard } from './components/HeroCard';
@@ -138,7 +138,13 @@ export default function App() {
     return saved && RAIL.some((t) => t.key === saved) ? saved : 'heroes';
   });
   const [selected, setSelected] = useState<Hero | null>(null);
-  const [visible, setVisible] = useState(60);
+  // Nombre de cards affichées, restauré au rechargement pour retrouver le scroll.
+  const [visible, setVisible] = useState(() => {
+    const v = parseInt(sessionStorage.getItem('feh.visible') ?? '', 10);
+    return Number.isFinite(v) && v >= 60 ? v : 60;
+  });
+  // Conteneur scrollable de la liste des héros (pour sauver/restaurer la position).
+  const mainRef = useRef<HTMLElement>(null);
   const [sortStat, setSortStat] = useState<string>(() => {
     const v = localStorage.getItem('feh.sortStat');
     return v &&
@@ -152,8 +158,15 @@ export default function App() {
     () => localStorage.getItem('feh.viewUserId') || null,
   );
   const profiles = useProfiles();
-  const { owned, stats, toggle, toggleResplendent, refetch, readOnly } =
-    useCollection(user?.id ?? null, viewUserId);
+  const {
+    owned,
+    stats,
+    toggle,
+    toggleResplendent,
+    refetch,
+    readOnly,
+    loading: collectionLoading,
+  } = useCollection(user?.id ?? null, viewUserId);
   const heroes = useHeroes();
   const rarityIcons = useRarityIcons();
   // Répartition des sceaux : chaque sceau unique va à un seul héros 5★+.
@@ -244,7 +257,52 @@ export default function App() {
     return list;
   }, [heroes, query, colorFilter, ownFilter, owned, sortStat, stats]);
 
-  useEffect(() => setVisible(60), [query, colorFilter, ownFilter]);
+  // Reset au changement de filtre (mais PAS au 1er montage, pour préserver la restauration).
+  const firstFilterRun = useRef(true);
+  useEffect(() => {
+    if (firstFilterRun.current) {
+      firstFilterRun.current = false;
+      return;
+    }
+    setVisible(60);
+    if (mainRef.current) mainRef.current.scrollTop = 0;
+    sessionStorage.setItem('feh.scroll', '0');
+  }, [query, colorFilter, ownFilter]);
+
+  // Persiste le nombre de cards affichées.
+  useEffect(() => {
+    sessionStorage.setItem('feh.visible', String(visible));
+  }, [visible]);
+
+  // Sauvegarde la position de scroll (throttlée) pendant le défilement des héros.
+  const scrollTick = useRef(false);
+  const handleMainScroll = () => {
+    if (tab !== 'heroes' || scrollTick.current) return;
+    scrollTick.current = true;
+    requestAnimationFrame(() => {
+      scrollTick.current = false;
+      if (mainRef.current) {
+        sessionStorage.setItem('feh.scroll', String(mainRef.current.scrollTop));
+      }
+    });
+  };
+
+  // Restaure la position de scroll une fois les données chargées (une seule fois).
+  const didRestore = useRef(false);
+  useEffect(() => {
+    if (didRestore.current) return;
+    if (tab !== 'heroes' || collectionLoading || heroes.length === 0) return;
+    didRestore.current = true;
+    const saved = parseInt(sessionStorage.getItem('feh.scroll') ?? '0', 10);
+    if (!saved) return;
+    // double rAF : attend que la grille soit mise en page avant de repositionner.
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        if (mainRef.current) mainRef.current.scrollTop = saved;
+      }),
+    );
+  }, [tab, collectionLoading, heroes]);
+
   const shown = filtered.slice(0, visible);
 
   // Login obligatoire : tant que la session charge / si non connecté.
@@ -448,7 +506,11 @@ export default function App() {
         </nav>
 
         {/* Main */}
-        <main className="min-w-0 flex-1 overflow-y-auto px-5 pb-12 pt-5 sm:px-8">
+        <main
+          ref={mainRef}
+          onScroll={handleMainScroll}
+          className="min-w-0 flex-1 overflow-y-auto px-5 pb-12 pt-5 sm:px-8"
+        >
           {tab === 'equipe' && (
             <TeamBuilder
               heroes={heroes}

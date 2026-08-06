@@ -31,3 +31,6 @@ FEH Asset Collection 4.0/
 .claude/
 Microsoft/
 zoom.png
+supabase/add_hero_1400.sql
+.gitignore
+supabase/sync_learnset_1400.sql
