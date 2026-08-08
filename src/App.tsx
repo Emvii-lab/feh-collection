@@ -509,7 +509,7 @@ export default function App() {
         <main
           ref={mainRef}
           onScroll={handleMainScroll}
-          className="min-w-0 flex-1 overflow-y-auto px-5 pb-12 pt-5 sm:px-8"
+          className="min-h-0 min-w-0 flex-1 overflow-y-auto px-5 pb-12 pt-5 sm:px-8"
         >
           {tab === 'equipe' && (
             <TeamBuilder
