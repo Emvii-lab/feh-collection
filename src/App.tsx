@@ -333,7 +333,7 @@ export default function App() {
   }
 
   return (
-    <div className="relative flex min-h-screen w-full flex-col overflow-hidden bg-warm-deep">
+    <div className="relative flex h-full w-full flex-col overflow-hidden bg-warm-deep">
       {/* Fond peint officiel (Hall d'Askr) + voile pour la lisibilité */}
       <div
         aria-hidden
