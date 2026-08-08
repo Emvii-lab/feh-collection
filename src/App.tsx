@@ -287,20 +287,35 @@ export default function App() {
     });
   };
 
-  // Restaure la position de scroll une fois les données chargées (une seule fois).
+  // Position sauvegardée, lue UNE fois au montage (avant que onScroll ne l'écrase).
+  const savedScrollRef = useRef(
+    parseInt(sessionStorage.getItem('feh.scroll') ?? '0', 10),
+  );
+  // Restaure la position une fois les données chargées, en réessayant image par image
+  // jusqu'à ce que la grille soit assez haute pour que scrollTop « tienne ».
   const didRestore = useRef(false);
   useEffect(() => {
     if (didRestore.current) return;
     if (tab !== 'heroes' || collectionLoading || heroes.length === 0) return;
-    didRestore.current = true;
-    const saved = parseInt(sessionStorage.getItem('feh.scroll') ?? '0', 10);
-    if (!saved) return;
-    // double rAF : attend que la grille soit mise en page avant de repositionner.
-    requestAnimationFrame(() =>
-      requestAnimationFrame(() => {
-        if (mainRef.current) mainRef.current.scrollTop = saved;
-      }),
-    );
+    const saved = savedScrollRef.current;
+    if (!saved) {
+      didRestore.current = true;
+      return;
+    }
+    let tries = 0;
+    const tryRestore = () => {
+      const el = mainRef.current;
+      if (!el || didRestore.current) return;
+      el.scrollTop = saved;
+      tries += 1;
+      // On s'arrête quand la position est atteinte (grille assez haute) ou après ~40 frames.
+      if (Math.abs(el.scrollTop - saved) <= 2 || tries >= 40) {
+        didRestore.current = true;
+      } else {
+        requestAnimationFrame(tryRestore);
+      }
+    };
+    requestAnimationFrame(tryRestore);
   }, [tab, collectionLoading, heroes]);
 
   const shown = filtered.slice(0, visible);
