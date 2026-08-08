@@ -34,3 +34,5 @@ zoom.png
 supabase/add_hero_1400.sql
 .gitignore
 supabase/sync_learnset_1400.sql
+supabase/add_heroes_1401-1404.sql
+supabase/sync_learnset_1401-1404.sql

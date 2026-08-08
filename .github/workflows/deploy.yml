@@ -26,6 +26,12 @@ jobs:
           node-version: 20
           cache: npm
 
+      # Active Pages et le bascule sur la source « GitHub Actions » si besoin
+      # (corrige les échecs de deploy-pages quand la source n'est pas configurée).
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
       # npm install (et non npm ci) : plus tolérant sur les deps natives multi-plateforme.
       - run: npm install --no-audit --no-fund
 
