@@ -27,6 +27,9 @@ const EFF_LABEL: Record<string, string> = {
   flying: 'Volant', armored: 'Cuirassé', cavalry: 'Cavalier',
   infantry: 'Fantassin', dragon: 'Dragon', beast: 'Bête',
 };
+const NO_WI: WeaponInfo = {
+  brave: false, effAgainst: [], atkBuff: 0, spdBuff: 0, defBuff: 0, resBuff: 0,
+};
 
 type EnemyState = {
   color: Color; weapon: WeaponType; move: string;
@@ -140,7 +143,7 @@ export function Simulator({
       if (!active) return;
       setWeaponInfo((prev) => {
         const next = new Map(prev);
-        for (const id of missing) next.set(id, m.get(id) ?? { brave: false, effAgainst: [] });
+        for (const id of missing) next.set(id, m.get(id) ?? NO_WI);
         return next;
       });
     });
@@ -162,7 +165,7 @@ export function Simulator({
     const eh = enemyHeroId ? byId.get(enemyHeroId) : null;
     const s = eh ? resolveStats(eh, stats.get(eh.id)) : null;
     if (eh && s) {
-      const wi = weaponInfo.get(eh.id) ?? { brave: false, effAgainst: [] };
+      const wi = weaponInfo.get(eh.id) ?? NO_WI;
       enemyUnit = {
         hero: eh, stats: s,
         mods: { ...enemyMods, brave: enemyMods.brave || wi.brave,
@@ -184,13 +187,16 @@ export function Simulator({
     const h = byId.get(id);
     const s = h && resolveStats(h, stats.get(id));
     if (!h || !s) return null;
-    const wi = weaponInfo.get(id) ?? { brave: false, effAgainst: [] };
+    const wi = weaponInfo.get(id) ?? NO_WI;
     const pu = unitMods.get(id) ?? { atkBuff: 0, guaranteedFollowup: false, dmgReductionPct: 0 };
     return {
       hero: h, stats: s,
       mods: {
         ...NO_MODS, brave: wi.brave, effAgainst: wi.effAgainst,
-        atkBuff: pu.atkBuff, guaranteedFollowup: pu.guaranteedFollowup, dmgReductionPct: pu.dmgReductionPct,
+        // bonus en combat auto (arme) + réglage manuel de l'ATQ
+        atkBuff: wi.atkBuff + pu.atkBuff,
+        spdBuff: wi.spdBuff, defBuff: wi.defBuff, resBuff: wi.resBuff,
+        guaranteedFollowup: pu.guaranteedFollowup, dmgReductionPct: pu.dmgReductionPct,
       },
     };
   };
@@ -453,10 +459,17 @@ export function Simulator({
                     type="button"
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => toggleMember(h.id)}
-                    className="flex w-full items-center justify-between px-3 py-1.5 text-left text-[12.5px] text-warm-text hover:bg-white/[0.06]"
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12.5px] text-warm-text hover:bg-white/[0.06]"
                   >
-                    <span>{h.name} <span className="text-warm-mute">— {h.title}</span></span>
-                    {team.includes(h.id) ? <span className="text-emerald-300">✓ ajouté</span> : <span className="text-warm-mute">+</span>}
+                    {h.art ? (
+                      <img src={h.art} alt="" className="h-8 w-8 shrink-0 object-contain" />
+                    ) : (
+                      <span className="h-8 w-8 shrink-0" />
+                    )}
+                    <span className="min-w-0 flex-1 truncate">
+                      {h.name} <span className="text-warm-mute">— {h.title}</span>
+                    </span>
+                    {team.includes(h.id) ? <span className="shrink-0 text-emerald-300">✓ ajouté</span> : <span className="shrink-0 text-warm-mute">+</span>}
                   </button>
                 ))
               )}
@@ -491,10 +504,11 @@ export function Simulator({
         )}
 
         <p className="mt-4 border-t border-white/10 pt-3 text-[11px] leading-relaxed text-warm-mute/80">
-          Auto-détecté depuis tes armes : <strong className="text-warm-dim">efficacité</strong> et <strong className="text-warm-dim">Brave</strong>.
-          Le reste (bonus en combat type Death Blow, spéciales, réductions…) se règle à la main
-          par unité (▾) et pour l'ennemi (Compétences ▾). Formule : ATQ (±20 % triangle, ×1,5 si efficace)
-          − DÉF/RÉS, doublon si VIT ≥ +5 ou garanti.
+          Auto-détecté depuis tes armes : <strong className="text-warm-dim">efficacité</strong>, <strong className="text-warm-dim">Brave</strong>,
+          et les <strong className="text-warm-dim">bonus en combat de l'arme</strong> (ex. « ATQ/VIT/DÉF/RÉS+5 »).
+          Mais l'app ne connaît <strong className="text-warm-dim">pas tes passifs A/B/C ni tes spéciales équipés</strong> —
+          ajoute-les à la main par unité (▾), sinon le simulateur sous-estime ta survie.
+          Formule : ATQ (±20 % triangle, ×1,5 si efficace) − DÉF/RÉS, doublon si VIT ≥ +5 ou garanti.
         </p>
       </div>
     </div>
@@ -625,13 +639,27 @@ function UnitRow({
         <div className="border-t border-white/10 bg-black/20 p-3">
           <Result sim={sim} atk={unit} def={enemy} />
           <div className="mt-3 space-y-1.5 border-t border-white/10 pt-2 text-[11.5px]">
-            {weaponInfo && (weaponInfo.brave || weaponInfo.effAgainst.length) ? (
+            {weaponInfo ? (
               <p className="text-emerald-300/80">
-                Auto : {weaponInfo.brave ? 'Brave ' : ''}
-                {weaponInfo.effAgainst.length ? `efficace vs ${weaponInfo.effAgainst.map((e) => EFF_LABEL[e] ?? e).join(', ')}` : ''}
+                Auto (arme) :{' '}
+                {[
+                  weaponInfo.brave ? 'Brave' : '',
+                  weaponInfo.effAgainst.length
+                    ? `eff. vs ${weaponInfo.effAgainst.map((e) => EFF_LABEL[e] ?? e).join(', ')}`
+                    : '',
+                  [
+                    weaponInfo.atkBuff ? `ATQ+${weaponInfo.atkBuff}` : '',
+                    weaponInfo.spdBuff ? `VIT+${weaponInfo.spdBuff}` : '',
+                    weaponInfo.defBuff ? `DÉF+${weaponInfo.defBuff}` : '',
+                    weaponInfo.resBuff ? `RÉS+${weaponInfo.resBuff}` : '',
+                  ].filter(Boolean).join(' '),
+                ].filter(Boolean).join(' · ') || 'aucun bonus détecté'}
               </p>
             ) : null}
-            <NumRow label="ATQ en combat (+)" value={mods.atkBuff} onChange={(n) => onMods({ ...mods, atkBuff: n })} />
+            <p className="text-[10.5px] text-warm-mute/70">
+              Ajoute à la main tes passifs/spéciales (Fury, Death Blow, esquive…) que l'app ne connaît pas :
+            </p>
+            <NumRow label="+ ATQ en combat (passifs)" value={mods.atkBuff} onChange={(n) => onMods({ ...mods, atkBuff: n })} />
             <NumRow label="Réduction de dégâts subis (%)" value={mods.dmgReductionPct} onChange={(n) => onMods({ ...mods, dmgReductionPct: n })} />
             <Check label="Double garanti" checked={mods.guaranteedFollowup} onChange={(b) => onMods({ ...mods, guaranteedFollowup: b })} />
           </div>

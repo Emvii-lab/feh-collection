@@ -1,8 +1,32 @@
 import { supabase } from './supabase';
 
-// Efficacité + Brave de la meilleure arme de chaque héros (lu depuis feh.skills).
-// Aucune donnée n'est stockée : on lit le learnset + les skills existants.
-export type WeaponInfo = { brave: boolean; effAgainst: string[] };
+// Efficacité + Brave + bonus en combat de la meilleure arme de chaque héros
+// (lu depuis feh.skills). Aucune donnée n'est stockée.
+export type WeaponInfo = {
+  brave: boolean;
+  effAgainst: string[];
+  atkBuff: number; spdBuff: number; defBuff: number; resBuff: number;
+};
+
+// Détecte les bonus « en combat » dans la description (ex. « Atk/Spd/Def/Res+5 »).
+// Best-effort : on prend le max par stat (on ne cumule pas les clauses conditionnelles).
+function detectCombatBuffs(desc: string | null) {
+  const buff = { atkBuff: 0, spdBuff: 0, defBuff: 0, resBuff: 0 };
+  if (!desc) return buff;
+  const key: Record<string, keyof typeof buff> = {
+    atk: 'atkBuff', spd: 'spdBuff', def: 'defBuff', res: 'resBuff',
+  };
+  const re = /((?:Atk|Spd|Def|Res)(?:\/(?:Atk|Spd|Def|Res))*)\+(\d+)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(desc))) {
+    const n = parseInt(m[2], 10);
+    for (const s of m[1].split('/')) {
+      const k = key[s.toLowerCase()];
+      if (k && n > buff[k]) buff[k] = n;
+    }
+  }
+  return buff;
+}
 
 // Normalise le champ weapon_effectiveness vers les jetons du moteur.
 function normEff(raw: string | null): string[] {
@@ -79,6 +103,7 @@ export async function fetchTeamWeapons(
       out.set(hid, {
         brave: isBrave(best.description),
         effAgainst: normEff(best.weapon_effectiveness),
+        ...detectCombatBuffs(best.description),
       });
     }
   }

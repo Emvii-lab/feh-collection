@@ -34,7 +34,10 @@ export function resolveStats(hero: Hero, coll?: CollStats | null): Stats | null 
 export type CombatMods = {
   brave: boolean; // attaque ×2
   effAgainst: string[]; // types ciblés par l'efficacité (ex. "Flying", "Dragon")
-  atkBuff: number; // +ATQ en combat (Death Blow, buffs de terrain…)
+  atkBuff: number; // +ATQ en combat (Death Blow, buffs d'arme…)
+  spdBuff: number; // +VIT en combat (pour le doublon)
+  defBuff: number; // +DÉF en combat (encaisse mieux les attaques physiques)
+  resBuff: number; // +RÉS en combat (encaisse mieux la magie)
   guaranteedFollowup: boolean; // double garanti
   noFollowup: boolean; // ne peut pas doubler
   cannotBeDoubled: boolean; // l'adversaire ne peut pas doubler cette unité
@@ -43,8 +46,9 @@ export type CombatMods = {
 };
 
 export const NO_MODS: CombatMods = {
-  brave: false, effAgainst: [], atkBuff: 0, guaranteedFollowup: false,
-  noFollowup: false, cannotBeDoubled: false, dmgReductionPct: 0, vantage: false,
+  brave: false, effAgainst: [], atkBuff: 0, spdBuff: 0, defBuff: 0, resBuff: 0,
+  guaranteedFollowup: false, noFollowup: false, cannotBeDoubled: false,
+  dmgReductionPct: 0, vantage: false,
 };
 
 export type Unit = { hero: Hero; stats: Stats; mods: CombatMods };
@@ -84,13 +88,18 @@ export function computeHit(atk: Unit, def: Unit): HitResult {
   const effective = isEffective(atk, def);
   if (effective) a = Math.trunc(a * 1.5);
   const useRes = targetsRes(atk.hero.weaponType);
-  const mit = useRes ? def.stats.res : def.stats.def;
+  const mit = useRes
+    ? def.stats.res + (def.mods.resBuff || 0)
+    : def.stats.def + (def.mods.defBuff || 0);
   let dmg = Math.max(0, a - mit);
   if (def.mods.dmgReductionPct > 0) {
     dmg = Math.max(0, Math.round(dmg * (1 - def.mods.dmgReductionPct / 100)));
   }
-  // Doublon : garanti, ou VIT ≥ +5, sauf si l'attaquant "noFollowup" ou la cible "cannotBeDoubled".
-  const spdOk = atk.stats.spd - def.stats.spd >= 5;
+  // Doublon : garanti, ou VIT (avec bonus) ≥ +5, sauf "noFollowup" / "cannotBeDoubled".
+  const spdOk =
+    (atk.stats.spd + (atk.mods.spdBuff || 0)) -
+      (def.stats.spd + (def.mods.spdBuff || 0)) >=
+    5;
   const canDouble =
     !atk.mods.noFollowup && !def.mods.cannotBeDoubled &&
     (atk.mods.guaranteedFollowup || spdOk);
