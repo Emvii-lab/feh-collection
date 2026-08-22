@@ -301,8 +301,8 @@ export function HeroDetail({
 
         {/* ===== PAGE DROITE : onglets (scroll indépendant sur desktop) ===== */}
         <div className="flex flex-col pt-3 md:min-h-0 md:flex-1 md:overflow-y-auto md:shadow-[inset_10px_0_16px_-10px_rgba(0,0,0,0.55)]">
-        {/* onglets : Stats / Voix */}
-        <div className="flex gap-2 px-5 pt-3">
+        {/* onglets : Stats / Voix + bouton simulateur */}
+        <div className="flex items-center gap-2 px-5 pt-3">
           {(['stats', 'kit', 'voix'] as const).map((t) => (
             <button
               key={t}
@@ -316,6 +316,15 @@ export function HeroDetail({
               {t === 'stats' ? 'Stats' : t === 'kit' ? 'Compétences' : 'Voix'}
             </button>
           ))}
+          <a
+            href="https://calc.kagerochart.com/"
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Ouvrir le simulateur de combat KageroCalc (nouvel onglet)"
+            className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-lg border border-gold-deep/40 bg-black/30 px-2.5 py-1.5 font-feh text-[12px] font-semibold text-gold-text transition hover:border-gold/60 hover:text-gold-light"
+          >
+            ⚔️ Simuler
+          </a>
         </div>
 
         {detailTab === 'stats' ? (

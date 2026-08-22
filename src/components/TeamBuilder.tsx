@@ -97,6 +97,19 @@ export function TeamBuilder({
 
   return (
     <div className="mx-auto max-w-5xl space-y-5">
+      {/* Accès au simulateur de combat */}
+      <div className="flex justify-end">
+        <a
+          href="https://calc.kagerochart.com/"
+          target="_blank"
+          rel="noopener noreferrer"
+          title="Ouvrir le simulateur de combat KageroCalc (nouvel onglet)"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-gold-deep/40 bg-black/30 px-3 py-1.5 font-feh text-[12.5px] font-semibold text-gold-text transition hover:border-gold/60 hover:text-gold-light"
+        >
+          ⚔️ Simuler l'équipe
+        </a>
+      </div>
+
       {/* Meilleure équipe par couleur */}
       <div className="rounded-2xl border border-gold-deep/40 bg-[rgba(20,15,9,.6)] p-5 shadow-card">
         <h3 className="mb-1 font-feh text-[15px] font-semibold tracking-wide text-gold-text">
