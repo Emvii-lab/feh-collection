@@ -6,6 +6,10 @@ import {
   NO_MODS, type Sim, type Unit, type Verdict,
 } from '../lib/combat';
 import { fetchTeamWeapons, type WeaponInfo } from '../lib/simWeapons';
+import {
+  fetchWikiMap, parsePageTitle, resolveEnemy,
+  type WikiEnemy, type WikiMap,
+} from '../lib/wikiMap';
 
 type StatKey = 'hp' | 'atk' | 'spd' | 'def' | 'res';
 const STAT_ROW: { key: StatKey; label: string }[] = [
@@ -66,9 +70,46 @@ export function Simulator({
   const [expanded, setExpanded] = useState<string | null>(initialAttacker?.id ?? null);
   const [unitMods, setUnitMods] = useState<Map<string, UnitMods>>(new Map());
   const [advEnemy, setAdvEnemy] = useState(false);
-  // Ennemi : soit saisi à la main, soit choisi parmi tes héros (auto-rempli).
-  const [enMode, setEnMode] = useState<'manual' | 'hero'>('manual');
+  // Ennemi : carte du wiki, saisie manuelle, ou un de tes héros.
+  const [enMode, setEnMode] = useState<'wiki' | 'manual' | 'hero'>('wiki');
   const [enemyHeroId, setEnemyHeroId] = useState('');
+  // Chargement d'une carte depuis le wiki FEH.
+  const [wikiUrl, setWikiUrl] = useState('');
+  const [wikiMap, setWikiMap] = useState<WikiMap | null>(null);
+  const [wikiDiff, setWikiDiff] = useState('');
+  const [wikiLoading, setWikiLoading] = useState(false);
+  const [wikiError, setWikiError] = useState<string | null>(null);
+  const heroByName = useMemo(() => {
+    const m = new Map<string, Hero>();
+    for (const h of heroes) m.set(`${h.name}: ${h.title}`.toLowerCase(), h);
+    return (name: string) => m.get(name.toLowerCase());
+  }, [heroes]);
+
+  const loadWiki = async () => {
+    setWikiLoading(true); setWikiError(null);
+    try {
+      const map = await fetchWikiMap(parsePageTitle(wikiUrl));
+      setWikiMap(map);
+      const diffs = Object.keys(map.difficulties);
+      setWikiDiff(diffs[diffs.length - 1] ?? ''); // par défaut la difficulté la plus élevée
+    } catch (e) {
+      setWikiMap(null);
+      setWikiError(e instanceof Error ? e.message : 'Échec du chargement');
+    } finally {
+      setWikiLoading(false);
+    }
+  };
+
+  const pickWikiEnemy = (u: WikiEnemy) => {
+    const r = resolveEnemy(u, heroByName);
+    setEnemy((e) => ({
+      ...e, color: r.color, weapon: r.weaponType, move: r.moveType,
+      stats: {
+        hp: String(r.hp), atk: String(r.atk), spd: String(r.spd),
+        def: String(r.def), res: String(r.res),
+      },
+    }));
+  };
 
   const [enemy, setEnemy] = useState<EnemyState>({
     color: 'red', weapon: 'Sword', move: 'Infantry',
@@ -209,7 +250,7 @@ export function Simulator({
             </span>
             <div className="flex items-center gap-2">
               <div className="flex overflow-hidden rounded-lg border border-white/10 text-[11px]">
-                {(['manual', 'hero'] as const).map((m) => (
+                {(['wiki', 'manual', 'hero'] as const).map((m) => (
                   <button
                     key={m}
                     type="button"
@@ -218,7 +259,7 @@ export function Simulator({
                       enMode === m ? 'bg-red-500/25 text-red-100' : 'text-warm-mute hover:text-warm-dim'
                     }`}
                   >
-                    {m === 'manual' ? 'Stats saisies' : 'Un de mes héros'}
+                    {m === 'wiki' ? 'Carte (wiki)' : m === 'manual' ? 'Stats saisies' : 'Mes héros'}
                   </button>
                 ))}
               </div>
@@ -257,6 +298,65 @@ export function Simulator({
             </>
           ) : (
             <>
+              {enMode === 'wiki' ? (
+                <div className="mb-2 rounded-lg border border-sky-400/20 bg-sky-950/20 p-2.5">
+                  <div className="flex gap-2">
+                    <input
+                      value={wikiUrl}
+                      onChange={(e) => setWikiUrl(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && loadWiki()}
+                      placeholder="Colle l'URL du wiki (page « … (map) »)…"
+                      className="min-w-0 flex-1 rounded border border-white/10 bg-black/40 px-2 py-1.5 text-[12px] text-warm-text outline-none focus:border-gold/50"
+                    />
+                    <button
+                      type="button"
+                      onClick={loadWiki}
+                      disabled={wikiLoading || !wikiUrl.trim()}
+                      className="shrink-0 rounded border border-gold-deep/40 bg-black/30 px-3 py-1.5 font-feh text-[12px] font-semibold text-gold-text transition hover:border-gold/60 disabled:opacity-50"
+                    >
+                      {wikiLoading ? '…' : 'Charger'}
+                    </button>
+                  </div>
+                  {wikiError ? (
+                    <p className="mt-1.5 text-[11px] text-amber-300/85">{wikiError}</p>
+                  ) : null}
+                  {wikiMap ? (
+                    <div className="mt-2">
+                      <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
+                        <span className="text-[11px] text-warm-mute">Difficulté :</span>
+                        {Object.keys(wikiMap.difficulties).map((d) => (
+                          <button
+                            key={d}
+                            type="button"
+                            onClick={() => setWikiDiff(d)}
+                            className={`rounded px-2 py-0.5 font-feh text-[11px] transition ${
+                              wikiDiff === d ? 'bg-gold-deep/50 text-warm-text' : 'text-warm-mute hover:text-warm-dim'
+                            }`}
+                          >
+                            {d}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {(wikiMap.difficulties[wikiDiff] ?? []).map((u, i) => (
+                          <button
+                            key={i}
+                            type="button"
+                            onClick={() => pickWikiEnemy(u)}
+                            title={`${u.hp}/${u.atk}/${u.spd}/${u.def}/${u.res} · ${u.weapon}`}
+                            className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11.5px] text-warm-text transition hover:border-gold/50 hover:text-gold-light"
+                          >
+                            {u.name}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="mt-1.5 text-[10.5px] text-warm-mute/80">
+                        Clique un ennemi → ses stats se remplissent (ajuste couleur/arme si besoin).
+                      </p>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
               <div className="grid grid-cols-3 gap-2">
                 <Select value={enemy.color} onChange={(v) => setEnemy((e) => ({ ...e, color: v as Color }))}
                   options={COLORS.map((c) => [c.v, c.label])} />
