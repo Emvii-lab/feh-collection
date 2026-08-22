@@ -62,9 +62,13 @@ export function Simulator({
     initialAttacker && roster.some((h) => h.id === initialAttacker.id) ? [initialAttacker.id] : [],
   );
   const [query, setQuery] = useState('');
+  const [listOpen, setListOpen] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(initialAttacker?.id ?? null);
   const [unitMods, setUnitMods] = useState<Map<string, UnitMods>>(new Map());
   const [advEnemy, setAdvEnemy] = useState(false);
+  // Ennemi : soit saisi à la main, soit choisi parmi tes héros (auto-rempli).
+  const [enMode, setEnMode] = useState<'manual' | 'hero'>('manual');
+  const [enemyHeroId, setEnemyHeroId] = useState('');
 
   const [enemy, setEnemy] = useState<EnemyState>({
     color: 'red', weapon: 'Sword', move: 'Infantry',
@@ -73,10 +77,11 @@ export function Simulator({
     guaranteedFollowup: false, cannotBeDoubled: false, vantage: false,
   });
 
-  // Armes (efficacité/Brave) des membres de l'équipe.
+  // Armes (efficacité/Brave) des membres de l'équipe (+ l'ennemi s'il est un héros).
   const [weaponInfo, setWeaponInfo] = useState<Map<string, WeaponInfo>>(new Map());
   useEffect(() => {
-    const missing = team.filter((id) => !weaponInfo.has(id));
+    const ids = [...team, ...(enMode === 'hero' && enemyHeroId ? [enemyHeroId] : [])];
+    const missing = ids.filter((id) => !weaponInfo.has(id));
     if (missing.length === 0) return;
     let active = true;
     fetchTeamWeapons(missing).then((m) => {
@@ -88,25 +93,40 @@ export function Simulator({
       });
     });
     return () => { active = false; };
-  }, [team, weaponInfo]);
+  }, [team, enMode, enemyHeroId, weaponInfo]);
 
-  // Unité ennemie (carte saisie).
+  // Modificateurs manuels de l'ennemi (avancé), communs aux deux modes.
+  const enemyMods = {
+    ...NO_MODS, brave: enemy.brave, effAgainst: enemy.effAgainst, atkBuff: enemy.atkBuff,
+    dmgReductionPct: enemy.dmgReductionPct, guaranteedFollowup: enemy.guaranteedFollowup,
+    cannotBeDoubled: enemy.cannotBeDoubled, vantage: enemy.vantage,
+  };
+
+  // Unité ennemie : soit un de tes héros (auto), soit une carte saisie.
   const enNums = STAT_ROW.map((s) => parseInt(enemy.stats[s.key], 10));
   const enComplete = enNums.every((n) => Number.isFinite(n) && n >= 0);
-  const enemyUnit: Unit | null = enComplete
-    ? {
-        hero: {
-          id: 'enemy', name: 'Carte ennemie', title: '', color: enemy.color,
-          weaponType: enemy.weapon, moveType: enemy.move, rarity: 5, origin: '',
-        } as Hero,
-        stats: { hp: enNums[0], atk: enNums[1], spd: enNums[2], def: enNums[3], res: enNums[4] },
-        mods: {
-          ...NO_MODS, brave: enemy.brave, effAgainst: enemy.effAgainst, atkBuff: enemy.atkBuff,
-          dmgReductionPct: enemy.dmgReductionPct, guaranteedFollowup: enemy.guaranteedFollowup,
-          cannotBeDoubled: enemy.cannotBeDoubled, vantage: enemy.vantage,
-        },
-      }
-    : null;
+  let enemyUnit: Unit | null = null;
+  if (enMode === 'hero') {
+    const eh = enemyHeroId ? byId.get(enemyHeroId) : null;
+    const s = eh ? resolveStats(eh, stats.get(eh.id)) : null;
+    if (eh && s) {
+      const wi = weaponInfo.get(eh.id) ?? { brave: false, effAgainst: [] };
+      enemyUnit = {
+        hero: eh, stats: s,
+        mods: { ...enemyMods, brave: enemyMods.brave || wi.brave,
+          effAgainst: enemyMods.effAgainst.length ? enemyMods.effAgainst : wi.effAgainst },
+      };
+    }
+  } else if (enComplete) {
+    enemyUnit = {
+      hero: {
+        id: 'enemy', name: 'Carte ennemie', title: '', color: enemy.color,
+        weaponType: enemy.weapon, moveType: enemy.move, rarity: 5, origin: '',
+      } as Hero,
+      stats: { hp: enNums[0], atk: enNums[1], spd: enNums[2], def: enNums[3], res: enNums[4] },
+      mods: enemyMods,
+    };
+  }
 
   const buildUnit = (id: string): Unit | null => {
     const h = byId.get(id);
@@ -183,41 +203,87 @@ export function Simulator({
 
         {/* ===== Carte ennemie ===== */}
         <div className="mb-4 rounded-xl border border-red-400/25 bg-red-950/20 p-3">
-          <div className="mb-2 flex items-center justify-between">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <span className="font-feh text-[13px] font-semibold text-red-200/90">
-              🛡️ Carte ennemie (stats lues en jeu)
+              🛡️ Carte ennemie
             </span>
-            <button
-              type="button"
-              onClick={() => setAdvEnemy((v) => !v)}
-              className="text-[11px] text-warm-mute underline decoration-dotted hover:text-warm-dim"
-            >
-              {advEnemy ? 'Masquer' : 'Compétences ▾'}
-            </button>
+            <div className="flex items-center gap-2">
+              <div className="flex overflow-hidden rounded-lg border border-white/10 text-[11px]">
+                {(['manual', 'hero'] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setEnMode(m)}
+                    className={`px-2 py-1 font-feh transition ${
+                      enMode === m ? 'bg-red-500/25 text-red-100' : 'text-warm-mute hover:text-warm-dim'
+                    }`}
+                  >
+                    {m === 'manual' ? 'Stats saisies' : 'Un de mes héros'}
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={() => setAdvEnemy((v) => !v)}
+                className="text-[11px] text-warm-mute underline decoration-dotted hover:text-warm-dim"
+              >
+                {advEnemy ? 'Masquer' : 'Compétences ▾'}
+              </button>
+            </div>
           </div>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <Select value={enemy.color} onChange={(v) => setEnemy((e) => ({ ...e, color: v as Color }))}
-              options={COLORS.map((c) => [c.v, c.label])} />
-            <Select value={enemy.weapon} onChange={(v) => setEnemy((e) => ({ ...e, weapon: v as WeaponType }))}
-              options={WEAPONS.map((w) => [w, w])} />
-            <Select value={enemy.move} onChange={(v) => setEnemy((e) => ({ ...e, move: v }))}
-              options={MOVES.map((m) => [m, m])} />
-            <div className="col-span-2 sm:col-span-1" />
-          </div>
-          <div className="mt-2 grid grid-cols-5 gap-1">
-            {STAT_ROW.map((s) => (
-              <label key={s.key} className="text-center">
-                <span className="block text-[9px] uppercase tracking-wide text-warm-mute">{s.label}</span>
-                <input
-                  inputMode="numeric" value={enemy.stats[s.key]} placeholder="—"
-                  onChange={(ev) =>
-                    setEnemy((e) => ({ ...e, stats: { ...e.stats, [s.key]: ev.target.value.replace(/[^0-9]/g, '') } }))
-                  }
-                  className="w-full rounded border border-white/10 bg-black/40 px-1 py-1 text-center font-feh text-[13px] text-warm-text outline-none focus:border-gold/50"
-                />
-              </label>
-            ))}
-          </div>
+
+          {enMode === 'hero' ? (
+            <>
+              <select
+                value={enemyHeroId}
+                onChange={(e) => setEnemyHeroId(e.target.value)}
+                className="w-full rounded-lg border border-white/10 bg-black/40 px-2.5 py-1.5 text-[13px] text-warm-text outline-none focus:border-gold/50"
+              >
+                <option value="">Choisir un de tes héros (stats saisies)…</option>
+                {roster.map((h) => (
+                  <option key={h.id} value={h.id}>{h.name} — {h.title}</option>
+                ))}
+              </select>
+              {enemyUnit ? (
+                <p className="mt-1.5 text-[11px] text-warm-mute">
+                  {enemyUnit.stats.hp} PV · {enemyUnit.stats.atk} ATQ · {enemyUnit.stats.spd} VIT ·{' '}
+                  {enemyUnit.stats.def} DÉF · {enemyUnit.stats.res} RÉS
+                </p>
+              ) : roster.length === 0 ? (
+                <p className="mt-1.5 text-[11px] text-amber-300/85">
+                  Aucun héros avec stats saisies — renseigne-les dans l'onglet Stats d'une fiche.
+                </p>
+              ) : null}
+            </>
+          ) : (
+            <>
+              <div className="grid grid-cols-3 gap-2">
+                <Select value={enemy.color} onChange={(v) => setEnemy((e) => ({ ...e, color: v as Color }))}
+                  options={COLORS.map((c) => [c.v, c.label])} />
+                <Select value={enemy.weapon} onChange={(v) => setEnemy((e) => ({ ...e, weapon: v as WeaponType }))}
+                  options={WEAPONS.map((w) => [w, w])} />
+                <Select value={enemy.move} onChange={(v) => setEnemy((e) => ({ ...e, move: v }))}
+                  options={MOVES.map((m) => [m, m])} />
+              </div>
+              <div className="mt-2 grid grid-cols-5 gap-1">
+                {STAT_ROW.map((s) => (
+                  <label key={s.key} className="text-center">
+                    <span className="block text-[9px] uppercase tracking-wide text-warm-mute">{s.label}</span>
+                    <input
+                      inputMode="numeric" value={enemy.stats[s.key]} placeholder="—"
+                      onChange={(ev) =>
+                        setEnemy((e) => ({ ...e, stats: { ...e.stats, [s.key]: ev.target.value.replace(/[^0-9]/g, '') } }))
+                      }
+                      className="w-full rounded border border-white/10 bg-black/40 px-1 py-1 text-center font-feh text-[13px] text-warm-text outline-none focus:border-gold/50"
+                    />
+                  </label>
+                ))}
+              </div>
+              <p className="mt-1.5 text-[10.5px] text-warm-mute/80">
+                Touche la carte en jeu pour lire ses 5 stats (niv. 40).
+              </p>
+            </>
+          )}
 
           {advEnemy ? (
             <div className="mt-3 space-y-2 border-t border-white/10 pt-3 text-[11.5px]">
@@ -236,26 +302,41 @@ export function Simulator({
 
         {/* ===== Ajouter des persos ===== */}
         <div className="mb-3">
+          <div className="mb-1 font-feh text-[12px] font-semibold text-warm-dim">
+            👥 Mon équipe à tester ({team.length})
+          </div>
           <input
-            value={query} onChange={(e) => setQuery(e.target.value)}
-            placeholder="Ajouter un perso à tester…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onFocus={() => setListOpen(true)}
+            onBlur={() => setTimeout(() => setListOpen(false), 150)}
+            placeholder="Clique ici pour ajouter tes persos…"
             className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-[13px] text-warm-text outline-none focus:border-gold/50"
           />
-          {query ? (
-            <div className="mt-1 max-h-40 overflow-y-auto rounded-lg border border-white/10 bg-black/40">
-              {filtered.slice(0, 30).map((h) => (
-                <button
-                  key={h.id} type="button"
-                  onClick={() => { toggleMember(h.id); setQuery(''); }}
-                  className="flex w-full items-center justify-between px-3 py-1.5 text-left text-[12.5px] text-warm-text hover:bg-white/[0.06]"
-                >
-                  <span>{h.name} <span className="text-warm-mute">— {h.title}</span></span>
-                  {team.includes(h.id) ? <span className="text-emerald-300">✓</span> : null}
-                </button>
-              ))}
-              {filtered.length === 0 ? (
-                <p className="px-3 py-2 text-[12px] text-warm-mute">Aucun perso possédé + stats saisies.</p>
-              ) : null}
+          {listOpen ? (
+            <div className="mt-1 max-h-52 overflow-y-auto rounded-lg border border-white/10 bg-black/60">
+              {roster.length === 0 ? (
+                <p className="px-3 py-3 text-[12px] text-amber-300/85">
+                  Aucun perso jouable : le simulateur n'affiche que tes héros
+                  <strong> possédés dont tu as saisi les stats</strong> (LVL/PV/ATQ… dans
+                  l'onglet Stats d'une fiche). Renseigne-les d'abord.
+                </p>
+              ) : filtered.length === 0 ? (
+                <p className="px-3 py-2 text-[12px] text-warm-mute">Aucun résultat pour « {query} ».</p>
+              ) : (
+                filtered.slice(0, 40).map((h) => (
+                  <button
+                    key={h.id}
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => toggleMember(h.id)}
+                    className="flex w-full items-center justify-between px-3 py-1.5 text-left text-[12.5px] text-warm-text hover:bg-white/[0.06]"
+                  >
+                    <span>{h.name} <span className="text-warm-mute">— {h.title}</span></span>
+                    {team.includes(h.id) ? <span className="text-emerald-300">✓ ajouté</span> : <span className="text-warm-mute">+</span>}
+                  </button>
+                ))
+              )}
             </div>
           ) : null}
         </div>
