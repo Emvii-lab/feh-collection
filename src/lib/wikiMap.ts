@@ -6,8 +6,13 @@ export type WikiEnemy = {
   name: string;
   hp: number; atk: number; spd: number; def: number; res: number;
   weapon: string;
+  pos: string; // case sur la grille, ex. "d7"
 };
-export type WikiMap = { title: string; difficulties: Record<string, WikiEnemy[]> };
+export type WikiMap = {
+  title: string;
+  difficulties: Record<string, WikiEnemy[]>;
+  allyPos: string[]; // cases de départ des alliés
+};
 
 export type ResolvedEnemy = WikiEnemy & {
   color: Color; weaponType: WeaponType; moveType: string;
@@ -26,7 +31,7 @@ export function parsePageTitle(input: string): string {
 }
 
 const DIFF_RE = /\|(\w+)\s*=\s*\[((?:[^[\]]|\[[^\]]*\])*)\]/g;
-const UNIT_RE = /unit=([^;]+);[^]*?stats=\[(\d+);(\d+);(\d+);(\d+);(\d+)\];weapon=([^;]*)/g;
+const UNIT_RE = /unit=([^;]+);pos=([^;]*);[^]*?stats=\[(\d+);(\d+);(\d+);(\d+);(\d+)\];weapon=([^;]*)/g;
 const KNOWN_DIFF = /^(normal|hard|lunatic|infernal|abyssal)$/i;
 
 export async function fetchWikiMap(pageTitle: string): Promise<WikiMap> {
@@ -49,16 +54,20 @@ export async function fetchWikiMap(pageTitle: string): Promise<WikiMap> {
     UNIT_RE.lastIndex = 0;
     while ((u = UNIT_RE.exec(m[2]))) {
       units.push({
-        name: u[1].trim(),
-        hp: +u[2], atk: +u[3], spd: +u[4], def: +u[5], res: +u[6],
-        weapon: (u[7] || '').trim(),
+        name: u[1].trim(), pos: (u[2] || '').trim(),
+        hp: +u[3], atk: +u[4], spd: +u[5], def: +u[6], res: +u[7],
+        weapon: (u[8] || '').trim(),
       });
     }
     if (units.length) difficulties[m[1]] = units;
   }
   if (Object.keys(difficulties).length === 0)
     throw new Error('Aucune unité trouvée — cette page n’est pas une carte de combat.');
-  return { title: pageTitle, difficulties };
+  const allyM = wt.match(/\|allyPos\s*=\s*([a-h0-9,\s]+)/i);
+  const allyPos = allyM
+    ? allyM[1].split(',').map((s) => s.trim()).filter(Boolean)
+    : [];
+  return { title: pageTitle, difficulties, allyPos };
 }
 
 // Déduit couleur / type d'arme / déplacement : d'abord via tes héros (nom exact),

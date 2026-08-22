@@ -79,6 +79,7 @@ export function Simulator({
   const [wikiDiff, setWikiDiff] = useState('');
   const [wikiLoading, setWikiLoading] = useState(false);
   const [wikiError, setWikiError] = useState<string | null>(null);
+  const [wikiSel, setWikiSel] = useState(''); // pos de l'ennemi sélectionné
   const heroByName = useMemo(() => {
     const m = new Map<string, Hero>();
     for (const h of heroes) m.set(`${h.name}: ${h.title}`.toLowerCase(), h);
@@ -101,6 +102,7 @@ export function Simulator({
   };
 
   const pickWikiEnemy = (u: WikiEnemy) => {
+    setWikiSel(u.pos);
     const r = resolveEnemy(u, heroByName);
     setEnemy((e) => ({
       ...e, color: r.color, weapon: r.weaponType, move: r.moveType,
@@ -337,14 +339,25 @@ export function Simulator({
                           </button>
                         ))}
                       </div>
-                      <div className="flex flex-wrap gap-1.5">
+                      <MapGrid
+                        enemies={wikiMap.difficulties[wikiDiff] ?? []}
+                        allyPos={wikiMap.allyPos}
+                        selectedPos={wikiSel}
+                        heroByName={heroByName}
+                        onPick={pickWikiEnemy}
+                      />
+                      <div className="mt-2 flex flex-wrap gap-1.5">
                         {(wikiMap.difficulties[wikiDiff] ?? []).map((u, i) => (
                           <button
                             key={i}
                             type="button"
                             onClick={() => pickWikiEnemy(u)}
                             title={`${u.hp}/${u.atk}/${u.spd}/${u.def}/${u.res} · ${u.weapon}`}
-                            className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11.5px] text-warm-text transition hover:border-gold/50 hover:text-gold-light"
+                            className={`rounded-md border px-2 py-1 text-[11.5px] transition ${
+                              wikiSel === u.pos
+                                ? 'border-gold/60 bg-gold-deep/25 text-gold-light'
+                                : 'border-white/10 bg-black/30 text-warm-text hover:border-gold/50 hover:text-gold-light'
+                            }`}
                           >
                             {u.name}
                           </button>
@@ -480,6 +493,79 @@ export function Simulator({
 
 /* ---------- sous-composants ---------- */
 
+const COLOR_BG: Record<string, string> = {
+  red: 'bg-red-500/80', blue: 'bg-sky-500/80', green: 'bg-emerald-500/80', colorless: 'bg-slate-300/80',
+};
+const shortLabel = (n: string) =>
+  n.replace(/[^A-Za-z ]/g, '').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
+
+// Grille tactique 6×8 (comme le wiki) : ennemis placés + cases de départ alliées.
+function MapGrid({
+  enemies, allyPos, selectedPos, heroByName, onPick,
+}: {
+  enemies: WikiEnemy[];
+  allyPos: string[];
+  selectedPos: string;
+  heroByName: (n: string) => Hero | undefined;
+  onPick: (u: WikiEnemy) => void;
+}) {
+  const enemyAt = new Map(enemies.map((e) => [e.pos.toLowerCase(), e]));
+  const ally = new Set(allyPos.map((p) => p.toLowerCase()));
+  const cols = ['a', 'b', 'c', 'd', 'e', 'f'];
+  const rows = [8, 7, 6, 5, 4, 3, 2, 1]; // rangée 8 en haut (camp ennemi)
+  return (
+    <div className="mx-auto mt-2 w-full max-w-[288px]">
+      <div className="grid gap-[2px]" style={{ gridTemplateColumns: 'repeat(6, 1fr)' }}>
+        {rows.flatMap((r) =>
+          cols.map((c) => {
+            const pos = c + r;
+            const en = enemyAt.get(pos);
+            const isAlly = ally.has(pos);
+            const hero = en ? heroByName(en.name) : undefined;
+            return (
+              <div
+                key={pos}
+                className={`relative aspect-square rounded-[3px] border ${
+                  isAlly ? 'border-sky-400/40 bg-sky-500/10' : 'border-white/[0.06] bg-black/25'
+                }`}
+              >
+                {en ? (
+                  <button
+                    type="button"
+                    onClick={() => onPick(en)}
+                    title={`${en.name} — ${en.hp}/${en.atk}/${en.spd}/${en.def}/${en.res}`}
+                    className={`absolute inset-0 flex items-center justify-center rounded-[3px] transition ${
+                      selectedPos === pos ? 'ring-2 ring-gold' : 'hover:brightness-125'
+                    }`}
+                  >
+                    {hero?.art ? (
+                      <img src={hero.art} alt={en.name} className="h-full w-full object-contain" />
+                    ) : (
+                      <span
+                        className={`flex h-[72%] w-[72%] items-center justify-center rounded-full text-[8px] font-bold text-black/80 ${
+                          COLOR_BG[resolveEnemy(en, heroByName).color] ?? 'bg-slate-300/80'
+                        }`}
+                      >
+                        {shortLabel(en.name)}
+                      </span>
+                    )}
+                  </button>
+                ) : isAlly ? (
+                  <span className="absolute inset-0 flex items-center justify-center text-[9px] text-sky-300/70">▲</span>
+                ) : null}
+              </div>
+            );
+          }),
+        )}
+      </div>
+      <div className="mt-1 flex items-center justify-center gap-3 text-[9.5px] text-warm-mute">
+        <span><span className="text-sky-300">▲</span> départ allié</span>
+        <span>· rangée 8 (haut) = ennemis</span>
+      </div>
+    </div>
+  );
+}
+
 function UnitRow({
   hero, sim, verdict, enemy, unit, expanded, onToggle, onRemove, mods, onMods, weaponInfo,
 }: {
@@ -492,6 +578,13 @@ function UnitRow({
     <div className={`rounded-xl border ${v.cls.replace(/text-[^ ]+/, '')} overflow-hidden`}>
       <div className="flex items-center gap-2 p-2.5">
         <button type="button" onClick={onToggle} className="flex min-w-0 flex-1 items-center gap-2 text-left">
+          {hero.art ? (
+            <img
+              src={hero.art}
+              alt=""
+              className="h-9 w-9 shrink-0 object-contain drop-shadow-[0_1px_2px_rgba(0,0,0,.6)]"
+            />
+          ) : null}
           <span className="min-w-0 truncate font-feh text-[13px] font-semibold text-warm-text">
             {hero.name} <span className="text-warm-mute">— {hero.title}</span>
           </span>
