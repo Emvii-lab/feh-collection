@@ -351,6 +351,7 @@ export function Simulator({
                       <MapGrid
                         enemies={wikiMap.difficulties[wikiDiff] ?? []}
                         allyPos={wikiMap.allyPos}
+                        team={team.map((id) => byId.get(id)).filter((h): h is Hero => !!h)}
                         selectedPos={wikiSel}
                         heroByName={heroByName}
                         onPick={pickWikiEnemy}
@@ -510,16 +511,17 @@ const shortLabel = (n: string) =>
 
 // Grille tactique 6×8 (comme le wiki) : ennemis placés + cases de départ alliées.
 function MapGrid({
-  enemies, allyPos, selectedPos, heroByName, onPick,
+  enemies, allyPos, team, selectedPos, heroByName, onPick,
 }: {
   enemies: WikiEnemy[];
   allyPos: string[];
+  team: Hero[];
   selectedPos: string;
   heroByName: (n: string) => Hero | undefined;
   onPick: (u: WikiEnemy) => void;
 }) {
   const enemyAt = new Map(enemies.map((e) => [e.pos.toLowerCase(), e]));
-  const ally = new Set(allyPos.map((p) => p.toLowerCase()));
+  const allyOrder = allyPos.map((p) => p.toLowerCase()); // ordonné : 1re case → 1er perso
   const cols = ['a', 'b', 'c', 'd', 'e', 'f'];
   const rows = [8, 7, 6, 5, 4, 3, 2, 1]; // rangée 8 en haut (camp ennemi)
   return (
@@ -529,7 +531,9 @@ function MapGrid({
           cols.map((c) => {
             const pos = c + r;
             const en = enemyAt.get(pos);
-            const isAlly = ally.has(pos);
+            const allyIdx = allyOrder.indexOf(pos);
+            const isAlly = allyIdx >= 0;
+            const ally = isAlly ? team[allyIdx] : undefined; // ton perso posé sur cette case
             const hero = en ? heroByName(en.name) : undefined;
             return (
               <div
@@ -559,6 +563,19 @@ function MapGrid({
                       </span>
                     )}
                   </button>
+                ) : ally ? (
+                  <span
+                    className="absolute inset-0 flex items-center justify-center"
+                    title={`${ally.name} — ${ally.title}`}
+                  >
+                    {ally.art ? (
+                      <img src={ally.art} alt={ally.name} className="h-full w-full object-contain" />
+                    ) : (
+                      <span className="flex h-[72%] w-[72%] items-center justify-center rounded-full bg-sky-500/70 text-[8px] font-bold text-black/80">
+                        {shortLabel(ally.name)}
+                      </span>
+                    )}
+                  </span>
                 ) : isAlly ? (
                   <span className="absolute inset-0 flex items-center justify-center text-[9px] text-sky-300/70">▲</span>
                 ) : null}
