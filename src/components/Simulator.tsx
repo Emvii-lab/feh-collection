@@ -80,10 +80,19 @@ export function Simulator({
   const [wikiLoading, setWikiLoading] = useState(false);
   const [wikiError, setWikiError] = useState<string | null>(null);
   const [wikiSel, setWikiSel] = useState(''); // pos de l'ennemi sélectionné
+  // Matche un nom du wiki à un de tes héros par SLUG (l'id est un slug anglais,
+  // ex. "rodrigue-faerghus-shield-1146"), robuste face aux titres FR de l'app.
   const heroByName = useMemo(() => {
-    const m = new Map<string, Hero>();
-    for (const h of heroes) m.set(`${h.name}: ${h.title}`.toLowerCase(), h);
-    return (name: string) => m.get(name.toLowerCase());
+    const slug = (s: string) =>
+      s
+        .normalize('NFKD')
+        .replace(/[̀-ͯ]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '');
+    const bySlug = new Map<string, Hero>();
+    for (const h of heroes) bySlug.set(h.id.replace(/-\d+$/, ''), h);
+    return (name: string) => bySlug.get(slug(name));
   }, [heroes]);
 
   const loadWiki = async () => {
