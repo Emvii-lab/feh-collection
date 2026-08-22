@@ -58,6 +58,8 @@ function cleanWiki(t: string | null): string {
 }
 
 // Version multiligne : les <br> deviennent de vrais retours à la ligne (pour l'affichage complet).
+// L'indentation de début de ligne est préservée (pour les listes à puces « - … »),
+// tandis que les espaces internes multiples sont réduits. À afficher avec `whitespace-pre-wrap`.
 function cleanWikiML(t: string | null): string {
   if (!t) return '';
   return t
@@ -65,8 +67,13 @@ function cleanWikiML(t: string | null): string {
     .replace(/\{\{[^}]*\}\}/g, '')
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/''+/g, '')
-    .replace(/[ \t]+/g, ' ')
-    .replace(/[ \t]*\n[ \t]*/g, '\n')
+    .split('\n')
+    .map((line) => {
+      const indent = line.match(/^[ \t]*/)?.[0] ?? '';
+      const body = line.slice(indent.length).replace(/[ \t]+/g, ' ').trimEnd();
+      return indent + body;
+    })
+    .join('\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
@@ -495,7 +502,7 @@ export function HeroKit({
               <WeaponEff w={detail} size={20} />
             </div>
           ) : null}
-          <p className="whitespace-pre-line text-[13px] leading-relaxed text-warm-dim">
+          <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-warm-dim">
             {cleanWikiML(detail.description) || 'Aucune description.'}
           </p>
         </div>
