@@ -28,11 +28,13 @@ export function TeamBuilder({
   owned,
   stats,
   onSelectHero,
+  onSimulate,
 }: {
   heroes: Hero[];
   owned: Set<string>;
   stats: Map<string, CollStats>;
   onSelectHero: (h: Hero) => void;
+  onSimulate?: () => void; // ouvre le simulateur de combat intégré
 }) {
   const [metric, setMetric] = useState('total');
   const [color, setColor] = useState<Color | 'all'>('all');
@@ -97,17 +99,16 @@ export function TeamBuilder({
 
   return (
     <div className="mx-auto max-w-5xl space-y-5">
-      {/* Accès au simulateur de combat */}
+      {/* Accès au simulateur de combat intégré */}
       <div className="flex justify-end">
-        <a
-          href="https://calc.kagerochart.com/"
-          target="_blank"
-          rel="noopener noreferrer"
-          title="Ouvrir le simulateur de combat KageroCalc (nouvel onglet)"
+        <button
+          type="button"
+          onClick={onSimulate}
+          title="Ouvrir le simulateur de combat"
           className="inline-flex items-center gap-1.5 rounded-lg border border-gold-deep/40 bg-black/30 px-3 py-1.5 font-feh text-[12.5px] font-semibold text-gold-text transition hover:border-gold/60 hover:text-gold-light"
         >
-          ⚔️ Simuler l'équipe
-        </a>
+          ⚔️ Simuler un combat
+        </button>
       </div>
 
       {/* Meilleure équipe par couleur */}

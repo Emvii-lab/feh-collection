@@ -4,6 +4,7 @@ import type { Color, Hero } from './types';
 import { HeroCard } from './components/HeroCard';
 import { useRarityIcons } from './lib/useRarityIcons';
 import { HeroDetail } from './components/HeroDetail';
+import { Simulator } from './components/Simulator';
 import { Stats } from './components/Stats';
 import { Credits } from './components/Credits';
 import { TeamBuilder } from './components/TeamBuilder';
@@ -138,6 +139,13 @@ export default function App() {
     return saved && RAIL.some((t) => t.key === saved) ? saved : 'heroes';
   });
   const [selected, setSelected] = useState<Hero | null>(null);
+  // Simulateur de combat : ouvert avec un attaquant pré-sélectionné (ou aucun).
+  const [simOpen, setSimOpen] = useState(false);
+  const [simAttacker, setSimAttacker] = useState<Hero | null>(null);
+  const openSim = (h?: Hero) => {
+    setSimAttacker(h ?? null);
+    setSimOpen(true);
+  };
   // Nombre de cards affichées, restauré au rechargement pour retrouver le scroll.
   const [visible, setVisible] = useState(() => {
     const v = parseInt(sessionStorage.getItem('feh.visible') ?? '', 10);
@@ -532,6 +540,7 @@ export default function App() {
               owned={owned}
               stats={stats}
               onSelectHero={setSelected}
+              onSimulate={() => openSim()}
             />
           )}
           {tab === 'stats' && <Stats heroes={heroes} owned={owned} />}
@@ -709,6 +718,17 @@ export default function App() {
           resplendentObtained={stats.get(selected.id)?.resplendent ?? false}
           sealPick={sealAlloc.get(selected.id) ?? null}
           onSaved={refetch}
+          onSimulate={() => openSim(selected)}
+        />
+      )}
+
+      {simOpen && (
+        <Simulator
+          heroes={heroes}
+          owned={owned}
+          stats={stats}
+          initialAttacker={simAttacker}
+          onClose={() => setSimOpen(false)}
         />
       )}
     </div>

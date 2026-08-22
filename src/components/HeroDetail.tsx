@@ -40,6 +40,7 @@ export function HeroDetail({
   resplendentObtained,
   sealPick,
   onSaved,
+  onSimulate,
 }: {
   hero: Hero;
   onClose: () => void;
@@ -49,6 +50,7 @@ export function HeroDetail({
   resplendentObtained?: boolean; // tenue resplendissante obtenue (collection)
   sealPick?: SealPick | null; // sceau attribué à ce héros par la répartition globale
   onSaved?: () => void;
+  onSimulate?: () => void; // ouvre le simulateur de combat avec ce héros en attaquant
 }) {
   // Tenue resplendissante (si au moins une pose resp. existe).
   const hasResplendent = Boolean(
@@ -316,15 +318,14 @@ export function HeroDetail({
               {t === 'stats' ? 'Stats' : t === 'kit' ? 'Compétences' : 'Voix'}
             </button>
           ))}
-          <a
-            href="https://calc.kagerochart.com/"
-            target="_blank"
-            rel="noopener noreferrer"
-            title="Ouvrir le simulateur de combat KageroCalc (nouvel onglet)"
+          <button
+            type="button"
+            onClick={onSimulate}
+            title="Simuler un combat avec ce héros"
             className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-lg border border-gold-deep/40 bg-black/30 px-2.5 py-1.5 font-feh text-[12px] font-semibold text-gold-text transition hover:border-gold/60 hover:text-gold-light"
           >
             ⚔️ Simuler
-          </a>
+          </button>
         </div>
 
         {detailTab === 'stats' ? (
