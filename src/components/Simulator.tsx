@@ -100,13 +100,13 @@ export function Simulator({
     return m === 'manual' || m === 'hero' ? m : 'wiki';
   });
   const [enemyHeroId, setEnemyHeroId] = useState(() => load<string>('feh.sim.enemyHeroId', ''));
-  // Chargement d'une carte depuis le wiki FEH.
+  // Chargement d'une carte depuis le wiki FEH (mémorisé pour réafficher la grille).
   const [wikiUrl, setWikiUrl] = useState(() => load<string>('feh.sim.wikiUrl', ''));
-  const [wikiMap, setWikiMap] = useState<WikiMap | null>(null);
-  const [wikiDiff, setWikiDiff] = useState('');
+  const [wikiMap, setWikiMap] = useState<WikiMap | null>(() => load<WikiMap | null>('feh.sim.wikiMap', null));
+  const [wikiDiff, setWikiDiff] = useState(() => load<string>('feh.sim.wikiDiff', ''));
   const [wikiLoading, setWikiLoading] = useState(false);
   const [wikiError, setWikiError] = useState<string | null>(null);
-  const [wikiSel, setWikiSel] = useState(''); // pos de l'ennemi sélectionné
+  const [wikiSel, setWikiSel] = useState(() => load<string>('feh.sim.wikiSel', '')); // pos sélectionnée
   // Matche un nom du wiki à un de tes héros par SLUG (l'id est un slug anglais,
   // ex. "rodrigue-faerghus-shield-1146"), robuste face aux titres FR de l'app.
   const heroByName = useMemo(() => {
@@ -165,6 +165,9 @@ export function Simulator({
   useEffect(() => save('feh.sim.enMode', enMode), [enMode]);
   useEffect(() => save('feh.sim.enemyHeroId', enemyHeroId), [enemyHeroId]);
   useEffect(() => save('feh.sim.wikiUrl', wikiUrl), [wikiUrl]);
+  useEffect(() => save('feh.sim.wikiMap', wikiMap), [wikiMap]);
+  useEffect(() => save('feh.sim.wikiDiff', wikiDiff), [wikiDiff]);
+  useEffect(() => save('feh.sim.wikiSel', wikiSel), [wikiSel]);
 
   // Armes (efficacité/Brave) des membres de l'équipe (+ l'ennemi s'il est un héros).
   const [weaponInfo, setWeaponInfo] = useState<Map<string, WeaponInfo>>(new Map());
