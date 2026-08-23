@@ -39,9 +39,14 @@ export type CombatMods = {
   defBuff: number; // +DÉF en combat (encaisse mieux les attaques physiques)
   resBuff: number; // +RÉS en combat (encaisse mieux la magie)
   bonusDamage: number; // dégâts fixes ajoutés à chaque coup (ex. « deals damage = X »)
+  bonusDamageStat: { atk: number; spd: number; def: number; res: number; hp: number }; // % d'une stat en +
   guaranteedFollowup: boolean; // double garanti
   noFollowup: boolean; // ne peut pas doubler
   cannotBeDoubled: boolean; // l'adversaire ne peut pas doubler cette unité
+  counterAnyRange: boolean; // riposte quelle que soit la portée (Distant/Close Counter)
+  preventFoeCounter: boolean; // l'adversaire ne peut pas riposter
+  neutralizeFoeBonuses: boolean; // annule les bonus en combat de l'adversaire
+  pierceFoeReduction: boolean; // annule la réduction de dégâts de l'adversaire
   dmgReductionPct: number; // % de réduction des dégâts SUBIS (0-100)
   flatDmgReduction: number; // réduction FIXE des dégâts subis (par coup)
   vantage: boolean; // en défense : frappe en premier
@@ -49,8 +54,10 @@ export type CombatMods = {
 
 export const NO_MODS: CombatMods = {
   brave: false, effAgainst: [], atkBuff: 0, spdBuff: 0, defBuff: 0, resBuff: 0,
-  bonusDamage: 0, guaranteedFollowup: false, noFollowup: false, cannotBeDoubled: false,
-  dmgReductionPct: 0, flatDmgReduction: 0, vantage: false,
+  bonusDamage: 0, bonusDamageStat: { atk: 0, spd: 0, def: 0, res: 0, hp: 0 },
+  guaranteedFollowup: false, noFollowup: false, cannotBeDoubled: false,
+  counterAnyRange: false, preventFoeCounter: false, neutralizeFoeBonuses: false,
+  pierceFoeReduction: false, dmgReductionPct: 0, flatDmgReduction: 0, vantage: false,
 };
 
 export type Unit = { hero: Hero; stats: Stats; mods: CombatMods };
@@ -82,29 +89,38 @@ export type HitResult = {
   adv: 1 | 0 | -1; targetsRes: boolean; effective: boolean;
 };
 
+// Bonus/malus de stat effectifs d'une unité — annulés si l'adversaire neutralise
+// les bonus (on ne retire alors que la partie POSITIVE, les malus restent).
+function effMod(u: Unit, foe: Unit, k: 'atkBuff' | 'spdBuff' | 'defBuff' | 'resBuff'): number {
+  const v = u.mods[k] || 0;
+  return foe.mods.neutralizeFoeBonuses ? Math.min(0, v) : v;
+}
+
 export function computeHit(atk: Unit, def: Unit): HitResult {
   const adv = triangle(atk.hero.color, def.hero.color);
-  let a = atk.stats.atk + (atk.mods.atkBuff || 0);
+  let a = atk.stats.atk + effMod(atk, def, 'atkBuff');
   const mod = Math.trunc(a * 0.2);
   a = adv === 1 ? a + mod : adv === -1 ? a - mod : a;
   const effective = isEffective(atk, def);
   if (effective) a = Math.trunc(a * 1.5);
   const useRes = targetsRes(atk.hero.weaponType);
   const mit = useRes
-    ? def.stats.res + (def.mods.resBuff || 0)
-    : def.stats.def + (def.mods.defBuff || 0);
+    ? def.stats.res + effMod(def, atk, 'resBuff')
+    : def.stats.def + effMod(def, atk, 'defBuff');
   let dmg = Math.max(0, a - mit);
   dmg += atk.mods.bonusDamage || 0; // dégâts fixes ajoutés (ex. « = compteur × N »)
-  if (def.mods.dmgReductionPct > 0) {
+  dmg += statBonusDamage(atk, def); // dégâts = % d'une stat
+  const pierce = atk.mods.pierceFoeReduction;
+  if (!pierce && def.mods.dmgReductionPct > 0) {
     dmg = Math.max(0, Math.round(dmg * (1 - def.mods.dmgReductionPct / 100)));
   }
-  if (def.mods.flatDmgReduction > 0) {
+  if (!pierce && def.mods.flatDmgReduction > 0) {
     dmg = Math.max(0, dmg - def.mods.flatDmgReduction); // réduction FIXE après le %
   }
   // Doublon : garanti, ou VIT (avec bonus) ≥ +5, sauf "noFollowup" / "cannotBeDoubled".
   const spdOk =
-    (atk.stats.spd + (atk.mods.spdBuff || 0)) -
-      (def.stats.spd + (def.mods.spdBuff || 0)) >=
+    (atk.stats.spd + effMod(atk, def, 'spdBuff')) -
+      (def.stats.spd + effMod(def, atk, 'spdBuff')) >=
     5;
   const canDouble =
     !atk.mods.noFollowup && !def.mods.cannotBeDoubled &&
@@ -113,8 +129,25 @@ export function computeHit(atk: Unit, def: Unit): HitResult {
   return { dmg, hits, total: dmg * hits, adv, targetsRes: useRes, effective };
 }
 
+// Dégâts bonus = pourcentage d'une stat du porteur (Spd/Def/Res/Atk/HP).
+function statBonusDamage(atk: Unit, def: Unit): number {
+  const p = atk.mods.bonusDamageStat;
+  if (!p) return 0;
+  const val = (base: number, buff: number, pct: number) =>
+    pct ? Math.trunc((base + buff) * pct / 100) : 0;
+  return (
+    val(atk.stats.atk, effMod(atk, def, 'atkBuff'), p.atk) +
+    val(atk.stats.spd, effMod(atk, def, 'spdBuff'), p.spd) +
+    val(atk.stats.def, effMod(atk, def, 'defBuff'), p.def) +
+    val(atk.stats.res, effMod(atk, def, 'resBuff'), p.res) +
+    val(atk.stats.hp, 0, p.hp)
+  );
+}
+
 export function canCounter(attacker: Unit, defender: Unit): boolean {
   if (defender.hero.weaponType === 'Staff') return false;
+  if (attacker.mods.preventFoeCounter) return false; // l'attaquant empêche la riposte
+  if (defender.mods.counterAnyRange) return true; // Distant/Close Counter
   return isRanged(attacker.hero.weaponType) === isRanged(defender.hero.weaponType);
 }
 

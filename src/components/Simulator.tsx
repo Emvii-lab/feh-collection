@@ -5,7 +5,7 @@ import {
   resolveStats, simulate, verdictOf,
   NO_MODS, type Sim, type Unit, type Verdict,
 } from '../lib/combat';
-import { fetchTeamWeapons, fetchEnemyCombat, type WeaponInfo } from '../lib/simWeapons';
+import { fetchTeamWeapons, fetchEnemyCombat, EMPTY_EFFECTS, type WeaponInfo, type EnemyCombat } from '../lib/simWeapons';
 import {
   fetchWikiMap, parsePageTitle, resolveEnemy,
   type WikiEnemy, type WikiMap,
@@ -44,9 +44,20 @@ const EFF_LABEL: Record<string, string> = {
   flying: 'Volant', armored: 'Cuirassé', cavalry: 'Cavalier',
   infantry: 'Fantassin', dragon: 'Dragon', beast: 'Bête',
 };
-const NO_WI: WeaponInfo = {
-  brave: false, effAgainst: [], atkBuff: 0, spdBuff: 0, defBuff: 0, resBuff: 0,
-};
+const NO_WI: WeaponInfo = { effAgainst: [], effects: EMPTY_EFFECTS() };
+
+// Extrait les effets auto-parsés (ParsedEffects) vers les champs de l'ennemi.
+const pickEffects = (c: EnemyCombat) => ({
+  atkBuff: c.atkBuff, spdBuff: c.spdBuff, defBuff: c.defBuff, resBuff: c.resBuff,
+  bonusDamage: c.bonusDamage, bonusDamageStat: c.bonusDamageStat,
+  dmgReductionPct: c.dmgReductionPct, flatDmgReduction: c.flatDmgReduction,
+  brave: c.brave, guaranteedFollowup: c.guaranteedFollowup, cannotBeDoubled: c.cannotBeDoubled,
+  noFollowup: c.noFollowup, counterAnyRange: c.counterAnyRange,
+  preventFoeCounter: c.preventFoeCounter, neutralizeFoeBonuses: c.neutralizeFoeBonuses,
+  pierceFoeReduction: c.pierceFoeReduction,
+  foeAtk: c.foeAtk, foeSpd: c.foeSpd, foeDef: c.foeDef, foeRes: c.foeRes,
+});
+const ZERO_EFFECTS = pickEffects(EMPTY_EFFECTS());
 
 type EnemyState = {
   color: Color; weapon: WeaponType; move: string;
@@ -54,7 +65,10 @@ type EnemyState = {
   brave: boolean; effAgainst: string[];
   atkBuff: number; spdBuff: number; defBuff: number; resBuff: number;
   bonusDamage: number; flatDmgReduction: number; dmgReductionPct: number;
+  bonusDamageStat: { atk: number; spd: number; def: number; res: number; hp: number };
   foeAtk: number; foeSpd: number; foeDef: number; foeRes: number; // malus infligés à TON unité
+  counterAnyRange: boolean; preventFoeCounter: boolean;
+  neutralizeFoeBonuses: boolean; pierceFoeReduction: boolean; noFollowup: boolean;
   guaranteedFollowup: boolean; cannotBeDoubled: boolean; vantage: boolean;
   autoNote?: string; // récap des effets auto-appliqués depuis les skills du wiki
 };
@@ -151,10 +165,7 @@ export function Simulator({
         def: String(r.def), res: String(r.res),
       },
       // on repart propre puis on applique les effets détectés
-      atkBuff: 0, spdBuff: 0, defBuff: 0, resBuff: 0,
-      bonusDamage: 0, flatDmgReduction: 0, dmgReductionPct: 0,
-      foeAtk: 0, foeSpd: 0, foeDef: 0, foeRes: 0,
-      brave: false, guaranteedFollowup: false, autoNote: 'Lecture des compétences…',
+      ...ZERO_EFFECTS, brave: false, autoNote: 'Lecture des compétences…',
     }));
     const c = await fetchEnemyCombat(u.skills);
     const b = [
@@ -165,21 +176,25 @@ export function Simulator({
       c.foeAtk ? `ATQ-${c.foeAtk}` : '', c.foeSpd ? `VIT-${c.foeSpd}` : '',
       c.foeDef ? `DÉF-${c.foeDef}` : '', c.foeRes ? `RÉS-${c.foeRes}` : '',
     ].filter(Boolean).join(' ');
+    const st = c.bonusDamageStat;
+    const statDmg = (['atk', 'spd', 'def', 'res', 'hp'] as const)
+      .filter((k) => st[k]).map((k) => `${st[k]}% ${k.toUpperCase()}`).join('+');
     const parts = [
       b,
       c.bonusDamage ? `+${c.bonusDamage} dégâts/coup` : '',
+      statDmg ? `+dégâts (${statDmg})` : '',
       c.dmgReductionPct ? `réduc. ${c.dmgReductionPct}%` : '',
       c.flatDmgReduction ? `−${c.flatDmgReduction} dégâts subis` : '',
       foe ? `t'inflige ${foe}` : '',
+      c.preventFoeCounter ? 'coupe ta riposte' : '',
+      c.counterAnyRange ? 'riposte à toute portée' : '',
+      c.neutralizeFoeBonuses ? 'annule tes bonus' : '',
+      c.pierceFoeReduction ? 'perce ta réduction' : '',
+      c.cannotBeDoubled ? 'empêche ton doublon' : '',
       c.brave ? 'Brave' : '', c.guaranteedFollowup ? 'double garanti' : '',
     ].filter(Boolean);
     setEnemy((e) => ({
-      ...e,
-      atkBuff: c.atkBuff, spdBuff: c.spdBuff, defBuff: c.defBuff, resBuff: c.resBuff,
-      bonusDamage: c.bonusDamage, flatDmgReduction: c.flatDmgReduction,
-      dmgReductionPct: c.dmgReductionPct,
-      foeAtk: c.foeAtk, foeSpd: c.foeSpd, foeDef: c.foeDef, foeRes: c.foeRes,
-      brave: c.brave, guaranteedFollowup: c.guaranteedFollowup,
+      ...e, ...pickEffects(c),
       autoNote: parts.length
         ? 'Auto depuis ses compétences : ' + parts.join(' · ')
         : 'Aucun effet fixe détecté (ses skills sont à formules non captées).',
@@ -190,11 +205,7 @@ export function Simulator({
     load<EnemyState>('feh.sim.enemy', {
       color: 'red', weapon: 'Sword', move: 'Infantry',
       stats: { hp: '', atk: '', spd: '', def: '', res: '' },
-      brave: false, effAgainst: [],
-      atkBuff: 0, spdBuff: 0, defBuff: 0, resBuff: 0,
-      bonusDamage: 0, flatDmgReduction: 0, dmgReductionPct: 0,
-      foeAtk: 0, foeSpd: 0, foeDef: 0, foeRes: 0,
-      guaranteedFollowup: false, cannotBeDoubled: false, vantage: false,
+      effAgainst: [], vantage: false, ...ZERO_EFFECTS,
     }),
   );
 
@@ -232,8 +243,14 @@ export function Simulator({
     ...NO_MODS, brave: enemy.brave, effAgainst: enemy.effAgainst,
     atkBuff: enemy.atkBuff, spdBuff: enemy.spdBuff, defBuff: enemy.defBuff, resBuff: enemy.resBuff,
     bonusDamage: enemy.bonusDamage ?? 0, flatDmgReduction: enemy.flatDmgReduction ?? 0,
+    bonusDamageStat: enemy.bonusDamageStat ?? NO_MODS.bonusDamageStat,
     dmgReductionPct: enemy.dmgReductionPct, guaranteedFollowup: enemy.guaranteedFollowup,
-    cannotBeDoubled: enemy.cannotBeDoubled, vantage: enemy.vantage,
+    cannotBeDoubled: enemy.cannotBeDoubled, noFollowup: enemy.noFollowup ?? false,
+    counterAnyRange: enemy.counterAnyRange ?? false,
+    preventFoeCounter: enemy.preventFoeCounter ?? false,
+    neutralizeFoeBonuses: enemy.neutralizeFoeBonuses ?? false,
+    pierceFoeReduction: enemy.pierceFoeReduction ?? false,
+    vantage: enemy.vantage,
   };
 
   // Unité ennemie : soit un de tes héros (auto), soit une carte saisie.
@@ -247,7 +264,7 @@ export function Simulator({
       const wi = weaponInfo.get(eh.id) ?? NO_WI;
       enemyUnit = {
         hero: eh, stats: s,
-        mods: { ...enemyMods, brave: enemyMods.brave || wi.brave,
+        mods: { ...enemyMods, brave: enemyMods.brave || wi.effects.brave,
           effAgainst: enemyMods.effAgainst.length ? enemyMods.effAgainst : wi.effAgainst },
       };
     }
@@ -271,14 +288,22 @@ export function Simulator({
     // Malus que l'ennemi t'inflige (ex. « Inflicts Spd/Res-4 on foe ») → baissent TES stats.
     const foeAtk = enemy.foeAtk ?? 0, foeSpd = enemy.foeSpd ?? 0;
     const foeDef = enemy.foeDef ?? 0, foeRes = enemy.foeRes ?? 0;
+    const ef = wi.effects; // effets détectés sur TON arme (best-effort, arme seule)
     return {
       hero: h, stats: s,
       mods: {
-        ...NO_MODS, brave: wi.brave, effAgainst: wi.effAgainst,
+        ...NO_MODS, brave: ef.brave, effAgainst: wi.effAgainst,
         // bonus en combat auto (arme) + réglage manuel de l'ATQ − malus infligés par l'ennemi
-        atkBuff: wi.atkBuff + pu.atkBuff - foeAtk,
-        spdBuff: wi.spdBuff - foeSpd, defBuff: wi.defBuff - foeDef, resBuff: wi.resBuff - foeRes,
-        guaranteedFollowup: pu.guaranteedFollowup, dmgReductionPct: pu.dmgReductionPct,
+        atkBuff: ef.atkBuff + pu.atkBuff - foeAtk,
+        spdBuff: ef.spdBuff - foeSpd, defBuff: ef.defBuff - foeDef, resBuff: ef.resBuff - foeRes,
+        bonusDamage: ef.bonusDamage, bonusDamageStat: ef.bonusDamageStat,
+        counterAnyRange: ef.counterAnyRange, preventFoeCounter: ef.preventFoeCounter,
+        neutralizeFoeBonuses: ef.neutralizeFoeBonuses, pierceFoeReduction: ef.pierceFoeReduction,
+        // doublon : garanti par l'arme ou réglé à la main ; réduction : arme + manuel
+        guaranteedFollowup: ef.guaranteedFollowup || pu.guaranteedFollowup,
+        cannotBeDoubled: ef.cannotBeDoubled, noFollowup: ef.noFollowup,
+        dmgReductionPct: Math.max(ef.dmgReductionPct, pu.dmgReductionPct),
+        flatDmgReduction: ef.flatDmgReduction,
       },
     };
   };
@@ -733,18 +758,24 @@ function UnitRow({
             {weaponInfo ? (
               <p className="text-emerald-300/80">
                 Auto (arme) :{' '}
-                {[
-                  weaponInfo.brave ? 'Brave' : '',
-                  weaponInfo.effAgainst.length
-                    ? `eff. vs ${weaponInfo.effAgainst.map((e) => EFF_LABEL[e] ?? e).join(', ')}`
-                    : '',
-                  [
-                    weaponInfo.atkBuff ? `ATQ+${weaponInfo.atkBuff}` : '',
-                    weaponInfo.spdBuff ? `VIT+${weaponInfo.spdBuff}` : '',
-                    weaponInfo.defBuff ? `DÉF+${weaponInfo.defBuff}` : '',
-                    weaponInfo.resBuff ? `RÉS+${weaponInfo.resBuff}` : '',
-                  ].filter(Boolean).join(' '),
-                ].filter(Boolean).join(' · ') || 'aucun bonus détecté'}
+                {(() => {
+                  const ef = weaponInfo.effects;
+                  return [
+                    ef.brave ? 'Brave' : '',
+                    weaponInfo.effAgainst.length
+                      ? `eff. vs ${weaponInfo.effAgainst.map((e) => EFF_LABEL[e] ?? e).join(', ')}`
+                      : '',
+                    [
+                      ef.atkBuff ? `ATQ+${ef.atkBuff}` : '',
+                      ef.spdBuff ? `VIT+${ef.spdBuff}` : '',
+                      ef.defBuff ? `DÉF+${ef.defBuff}` : '',
+                      ef.resBuff ? `RÉS+${ef.resBuff}` : '',
+                    ].filter(Boolean).join(' '),
+                    ef.counterAnyRange ? 'riposte à toute portée' : '',
+                    ef.preventFoeCounter ? 'coupe sa riposte' : '',
+                    ef.neutralizeFoeBonuses ? 'annule ses bonus' : '',
+                  ].filter(Boolean).join(' · ') || 'aucun effet détecté';
+                })()}
               </p>
             ) : null}
             <p className="text-[10.5px] text-warm-mute/70">
