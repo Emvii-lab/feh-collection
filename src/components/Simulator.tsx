@@ -11,6 +11,23 @@ import {
   type WikiEnemy, type WikiMap,
 } from '../lib/wikiMap';
 
+// Persistance légère (équipe + carte ennemie) entre les ouvertures / rechargements.
+const load = <T,>(key: string, fallback: T): T => {
+  try {
+    const v = localStorage.getItem(key);
+    return v ? (JSON.parse(v) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+};
+const save = (key: string, val: unknown) => {
+  try {
+    localStorage.setItem(key, JSON.stringify(val));
+  } catch {
+    /* quota/private mode : on ignore */
+  }
+};
+
 type StatKey = 'hp' | 'atk' | 'spd' | 'def' | 'res';
 const STAT_ROW: { key: StatKey; label: string }[] = [
   { key: 'hp', label: 'PV' }, { key: 'atk', label: 'ATQ' }, { key: 'spd', label: 'VIT' },
@@ -65,19 +82,26 @@ export function Simulator({
     [heroes, owned, stats],
   );
 
-  const [team, setTeam] = useState<string[]>(
-    initialAttacker && roster.some((h) => h.id === initialAttacker.id) ? [initialAttacker.id] : [],
-  );
+  const [team, setTeam] = useState<string[]>(() => {
+    const saved = load<string[]>('feh.sim.team', []);
+    if (initialAttacker && !saved.includes(initialAttacker.id)) return [initialAttacker.id, ...saved];
+    return saved;
+  });
   const [query, setQuery] = useState('');
   const [listOpen, setListOpen] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(initialAttacker?.id ?? null);
-  const [unitMods, setUnitMods] = useState<Map<string, UnitMods>>(new Map());
+  const [unitMods, setUnitMods] = useState<Map<string, UnitMods>>(
+    () => new Map(load<[string, UnitMods][]>('feh.sim.unitMods', [])),
+  );
   const [advEnemy, setAdvEnemy] = useState(false);
   // Ennemi : carte du wiki, saisie manuelle, ou un de tes héros.
-  const [enMode, setEnMode] = useState<'wiki' | 'manual' | 'hero'>('wiki');
-  const [enemyHeroId, setEnemyHeroId] = useState('');
+  const [enMode, setEnMode] = useState<'wiki' | 'manual' | 'hero'>(() => {
+    const m = load<string>('feh.sim.enMode', 'wiki');
+    return m === 'manual' || m === 'hero' ? m : 'wiki';
+  });
+  const [enemyHeroId, setEnemyHeroId] = useState(() => load<string>('feh.sim.enemyHeroId', ''));
   // Chargement d'une carte depuis le wiki FEH.
-  const [wikiUrl, setWikiUrl] = useState('');
+  const [wikiUrl, setWikiUrl] = useState(() => load<string>('feh.sim.wikiUrl', ''));
   const [wikiMap, setWikiMap] = useState<WikiMap | null>(null);
   const [wikiDiff, setWikiDiff] = useState('');
   const [wikiLoading, setWikiLoading] = useState(false);
@@ -125,12 +149,22 @@ export function Simulator({
     }));
   };
 
-  const [enemy, setEnemy] = useState<EnemyState>({
-    color: 'red', weapon: 'Sword', move: 'Infantry',
-    stats: { hp: '', atk: '', spd: '', def: '', res: '' },
-    brave: false, effAgainst: [], atkBuff: 0, dmgReductionPct: 0,
-    guaranteedFollowup: false, cannotBeDoubled: false, vantage: false,
-  });
+  const [enemy, setEnemy] = useState<EnemyState>(() =>
+    load<EnemyState>('feh.sim.enemy', {
+      color: 'red', weapon: 'Sword', move: 'Infantry',
+      stats: { hp: '', atk: '', spd: '', def: '', res: '' },
+      brave: false, effAgainst: [], atkBuff: 0, dmgReductionPct: 0,
+      guaranteedFollowup: false, cannotBeDoubled: false, vantage: false,
+    }),
+  );
+
+  // Sauvegarde de l'équipe + carte ennemie entre les ouvertures/rechargements.
+  useEffect(() => save('feh.sim.team', team), [team]);
+  useEffect(() => save('feh.sim.unitMods', [...unitMods]), [unitMods]);
+  useEffect(() => save('feh.sim.enemy', enemy), [enemy]);
+  useEffect(() => save('feh.sim.enMode', enMode), [enMode]);
+  useEffect(() => save('feh.sim.enemyHeroId', enemyHeroId), [enemyHeroId]);
+  useEffect(() => save('feh.sim.wikiUrl', wikiUrl), [wikiUrl]);
 
   // Armes (efficacité/Brave) des membres de l'équipe (+ l'ennemi s'il est un héros).
   const [weaponInfo, setWeaponInfo] = useState<Map<string, WeaponInfo>>(new Map());
