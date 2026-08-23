@@ -380,7 +380,11 @@ export function Simulator({
                         ))}
                       </div>
                       <p className="mt-1.5 text-[10.5px] text-warm-mute/80">
-                        Clique un ennemi → ses stats se remplissent (ajuste couleur/arme si besoin).
+                        Clique un ennemi → ses <strong className="text-warm-dim">stats</strong> se remplissent (couleur/arme ajustables).
+                      </p>
+                      <p className="mt-1 text-[10.5px] text-amber-300/80">
+                        ⚠️ Ses <strong>compétences</strong> (bonus en combat, réduction de dégâts, spéciale) ne sont
+                        <strong> pas</strong> appliquées — un boss peut donc gagner en jeu même si le simu dit l'inverse.
                       </p>
                     </div>
                   ) : null}
@@ -504,11 +508,12 @@ export function Simulator({
         )}
 
         <p className="mt-4 border-t border-white/10 pt-3 text-[11px] leading-relaxed text-warm-mute/80">
-          Auto-détecté depuis tes armes : <strong className="text-warm-dim">efficacité</strong>, <strong className="text-warm-dim">Brave</strong>,
-          et les <strong className="text-warm-dim">bonus en combat de l'arme</strong> (ex. « ATQ/VIT/DÉF/RÉS+5 »).
-          Mais l'app ne connaît <strong className="text-warm-dim">pas tes passifs A/B/C ni tes spéciales équipés</strong> —
-          ajoute-les à la main par unité (▾), sinon le simulateur sous-estime ta survie.
-          Formule : ATQ (±20 % triangle, ×1,5 si efficace) − DÉF/RÉS, doublon si VIT ≥ +5 ou garanti.
+          <strong className="text-amber-300/90">Estimation approximative.</strong> Auto depuis tes armes :
+          efficacité, Brave, bonus en combat de l'arme. Mais le simulateur ne connaît <strong className="text-warm-dim">ni
+          les passifs/spéciales équipés, ni les compétences de l'ennemi, ni les réductions de dégâts</strong> —
+          donc le résultat peut <strong className="text-warm-dim">différer du jeu dans les deux sens</strong> sur les
+          unités à kit chargé (boss). Pour l'exact, fie-toi à la <strong className="text-warm-dim">prévision de
+          combat en jeu</strong>, ou ajuste à la main les ▾ (toi et l'ennemi via « Compétences ▾ »).
         </p>
       </div>
     </div>
