@@ -53,6 +53,60 @@ const isBrave = (d: string | null) => /attacks?\s+twice|\bbrave\b/i.test(d ?? ''
 const effMight = (might: number | null, desc: string | null) =>
   (might ?? 0) * (isBrave(desc) ? 1.9 : 1);
 
+// ---- Effets d'un ennemi de map, détectés depuis SES compétences (best-effort) ----
+export type EnemyCombat = {
+  atkBuff: number; spdBuff: number; defBuff: number; resBuff: number;
+  brave: boolean; guaranteedFollowup: boolean; dmgReductionPct: number;
+};
+
+const deacc = (s: string) => s.normalize('NFKD').replace(/[̀-ͯ]/g, '');
+const STAT_KEY: Record<string, 'atkBuff' | 'spdBuff' | 'defBuff' | 'resBuff'> = {
+  atk: 'atkBuff', atq: 'atkBuff', spd: 'spdBuff', vit: 'spdBuff',
+  def: 'defBuff', res: 'resBuff',
+};
+// Bonus fixes détectés dans UNE description (max par stat, EN + FR).
+function statBuffs(descRaw: string) {
+  const b = { atkBuff: 0, spdBuff: 0, defBuff: 0, resBuff: 0 };
+  const d = deacc(descRaw);
+  const re = /((?:At[kq]|Spd|Vit|Def|Res)(?:\/(?:At[kq]|Spd|Vit|Def|Res))*)\s*\+\s*(\d+)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(d))) {
+    const n = parseInt(m[2], 10);
+    for (const s of m[1].split('/')) {
+      const k = STAT_KEY[s.toLowerCase()];
+      if (k && n > b[k]) b[k] = n;
+    }
+  }
+  return b;
+}
+// Combine les effets de toutes les compétences d'un ennemi (noms anglais du wiki).
+export async function fetchEnemyCombat(skillNames: string[]): Promise<EnemyCombat> {
+  const out: EnemyCombat = {
+    atkBuff: 0, spdBuff: 0, defBuff: 0, resBuff: 0,
+    brave: false, guaranteedFollowup: false, dmgReductionPct: 0,
+  };
+  const names = skillNames.filter(Boolean);
+  if (!supabase || names.length === 0) return out;
+  const { data } = await supabase
+    .from('skills')
+    .select('description')
+    .in('wiki_name', names);
+  for (const row of data ?? []) {
+    const desc = (row as { description: string | null }).description ?? '';
+    const b = statBuffs(desc); // on SOMME entre compétences (elles s'empilent en combat)
+    out.atkBuff += b.atkBuff; out.spdBuff += b.spdBuff;
+    out.defBuff += b.defBuff; out.resBuff += b.resBuff;
+    if (isBrave(desc)) out.brave = true;
+    if (/guaranteed follow-up|double.{0,4}garanti|deuxi[eè]me fois garanti/i.test(desc))
+      out.guaranteedFollowup = true;
+    const dr =
+      desc.match(/reduces damage[^.]*?by\s*(\d+)\s*%/i) ||
+      desc.match(/r[ée]duit les d[ée]g[aâ]ts[^.]*?de\s*(\d+)\s*%/i);
+    if (dr) out.dmgReductionPct = Math.max(out.dmgReductionPct, parseInt(dr[1], 10));
+  }
+  return out;
+}
+
 export async function fetchTeamWeapons(
   heroIds: string[],
 ): Promise<Map<string, WeaponInfo>> {

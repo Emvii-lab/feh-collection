@@ -5,7 +5,7 @@ import {
   resolveStats, simulate, verdictOf,
   NO_MODS, type Sim, type Unit, type Verdict,
 } from '../lib/combat';
-import { fetchTeamWeapons, type WeaponInfo } from '../lib/simWeapons';
+import { fetchTeamWeapons, fetchEnemyCombat, type WeaponInfo } from '../lib/simWeapons';
 import {
   fetchWikiMap, parsePageTitle, resolveEnemy,
   type WikiEnemy, type WikiMap,
@@ -51,8 +51,11 @@ const NO_WI: WeaponInfo = {
 type EnemyState = {
   color: Color; weapon: WeaponType; move: string;
   stats: Record<StatKey, string>;
-  brave: boolean; effAgainst: string[]; atkBuff: number; dmgReductionPct: number;
+  brave: boolean; effAgainst: string[];
+  atkBuff: number; spdBuff: number; defBuff: number; resBuff: number;
+  dmgReductionPct: number;
   guaranteedFollowup: boolean; cannotBeDoubled: boolean; vantage: boolean;
+  autoNote?: string; // récap des effets auto-appliqués depuis les skills du wiki
 };
 type UnitMods = { atkBuff: number; guaranteedFollowup: boolean; dmgReductionPct: number };
 
@@ -137,7 +140,7 @@ export function Simulator({
     }
   };
 
-  const pickWikiEnemy = (u: WikiEnemy) => {
+  const pickWikiEnemy = async (u: WikiEnemy) => {
     setWikiSel(u.pos);
     const r = resolveEnemy(u, heroByName);
     setEnemy((e) => ({
@@ -146,6 +149,27 @@ export function Simulator({
         hp: String(r.hp), atk: String(r.atk), spd: String(r.spd),
         def: String(r.def), res: String(r.res),
       },
+      // on repart propre puis on applique les effets détectés
+      atkBuff: 0, spdBuff: 0, defBuff: 0, resBuff: 0, dmgReductionPct: 0,
+      brave: false, guaranteedFollowup: false, autoNote: 'Lecture des compétences…',
+    }));
+    const c = await fetchEnemyCombat(u.skills);
+    const b = [
+      c.atkBuff ? `ATQ+${c.atkBuff}` : '', c.spdBuff ? `VIT+${c.spdBuff}` : '',
+      c.defBuff ? `DÉF+${c.defBuff}` : '', c.resBuff ? `RÉS+${c.resBuff}` : '',
+    ].filter(Boolean).join(' ');
+    const parts = [
+      b, c.dmgReductionPct ? `réduc. ${c.dmgReductionPct}%` : '',
+      c.brave ? 'Brave' : '', c.guaranteedFollowup ? 'double garanti' : '',
+    ].filter(Boolean);
+    setEnemy((e) => ({
+      ...e,
+      atkBuff: c.atkBuff, spdBuff: c.spdBuff, defBuff: c.defBuff, resBuff: c.resBuff,
+      dmgReductionPct: c.dmgReductionPct, brave: c.brave,
+      guaranteedFollowup: c.guaranteedFollowup,
+      autoNote: parts.length
+        ? 'Auto depuis ses compétences : ' + parts.join(' · ')
+        : 'Aucun effet fixe détecté (ses skills sont à formules, non captés).',
     }));
   };
 
@@ -153,7 +177,8 @@ export function Simulator({
     load<EnemyState>('feh.sim.enemy', {
       color: 'red', weapon: 'Sword', move: 'Infantry',
       stats: { hp: '', atk: '', spd: '', def: '', res: '' },
-      brave: false, effAgainst: [], atkBuff: 0, dmgReductionPct: 0,
+      brave: false, effAgainst: [],
+      atkBuff: 0, spdBuff: 0, defBuff: 0, resBuff: 0, dmgReductionPct: 0,
       guaranteedFollowup: false, cannotBeDoubled: false, vantage: false,
     }),
   );
@@ -187,9 +212,10 @@ export function Simulator({
     return () => { active = false; };
   }, [team, enMode, enemyHeroId, weaponInfo]);
 
-  // Modificateurs manuels de l'ennemi (avancé), communs aux deux modes.
+  // Modificateurs de l'ennemi (auto depuis ses skills wiki + réglage manuel).
   const enemyMods = {
-    ...NO_MODS, brave: enemy.brave, effAgainst: enemy.effAgainst, atkBuff: enemy.atkBuff,
+    ...NO_MODS, brave: enemy.brave, effAgainst: enemy.effAgainst,
+    atkBuff: enemy.atkBuff, spdBuff: enemy.spdBuff, defBuff: enemy.defBuff, resBuff: enemy.resBuff,
     dmgReductionPct: enemy.dmgReductionPct, guaranteedFollowup: enemy.guaranteedFollowup,
     cannotBeDoubled: enemy.cannotBeDoubled, vantage: enemy.vantage,
   };
@@ -420,8 +446,9 @@ export function Simulator({
                         Clique un ennemi → ses <strong className="text-warm-dim">stats</strong> se remplissent (couleur/arme ajustables).
                       </p>
                       <p className="mt-1 text-[10.5px] text-amber-300/80">
-                        ⚠️ Ses <strong>compétences</strong> (bonus en combat, réduction de dégâts, spéciale) ne sont
-                        <strong> pas</strong> appliquées — un boss peut donc gagner en jeu même si le simu dit l'inverse.
+                        ⚠️ Ses <strong>compétences fixes</strong> (bonus, réduction %, Brave…) sont auto-appliquées,
+                        mais <strong>pas les effets à formules</strong> (liés à la jauge de spéciale, aux PV…) — un boss
+                        peut donc rester plus fort en jeu. Ajuste au besoin via « Compétences ▾ ».
                       </p>
                     </div>
                   ) : null}
@@ -452,6 +479,9 @@ export function Simulator({
               <p className="mt-1.5 text-[10.5px] text-warm-mute/80">
                 Touche la carte en jeu pour lire ses 5 stats (niv. 40).
               </p>
+              {enemy.autoNote ? (
+                <p className="mt-1 text-[10.5px] text-emerald-300/85">{enemy.autoNote}</p>
+              ) : null}
             </>
           )}
 

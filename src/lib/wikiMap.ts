@@ -6,6 +6,7 @@ export type WikiEnemy = {
   name: string;
   hp: number; atk: number; spd: number; def: number; res: number;
   weapon: string;
+  skills: string[]; // arme + spéciale + passifs A/B/C + sceau (noms anglais)
   pos: string; // case sur la grille, ex. "d7"
 };
 export type WikiMap = {
@@ -31,8 +32,13 @@ export function parsePageTitle(input: string): string {
 }
 
 const DIFF_RE = /\|(\w+)\s*=\s*\[((?:[^[\]]|\[[^\]]*\])*)\]/g;
-const UNIT_RE = /unit=([^;]+);pos=([^;]*);[^]*?stats=\[(\d+);(\d+);(\d+);(\d+);(\d+)\];weapon=([^;]*)/g;
+const UNIT_BLOCK = /\{([^{}]*)\}/g; // chaque unité { … }
 const KNOWN_DIFF = /^(normal|hard|lunatic|infernal|abyssal)$/i;
+
+const field = (block: string, key: string): string => {
+  const m = block.match(new RegExp('(?:^|;)' + key + '=([^;]*)'));
+  return m ? m[1].trim() : '';
+};
 
 export async function fetchWikiMap(pageTitle: string): Promise<WikiMap> {
   const url =
@@ -51,12 +57,19 @@ export async function fetchWikiMap(pageTitle: string): Promise<WikiMap> {
     if (!KNOWN_DIFF.test(m[1])) continue;
     const units: WikiEnemy[] = [];
     let u: RegExpExecArray | null;
-    UNIT_RE.lastIndex = 0;
-    while ((u = UNIT_RE.exec(m[2]))) {
+    UNIT_BLOCK.lastIndex = 0;
+    while ((u = UNIT_BLOCK.exec(m[2]))) {
+      const blk = u[1];
+      if (!/(?:^|;)unit=/.test(blk)) continue;
+      const st = blk.match(/stats=\[(\d+);(\d+);(\d+);(\d+);(\d+)\]/);
+      if (!st) continue;
+      const skills = ['weapon', 'special', 'a', 'b', 'c', 'seal']
+        .map((k) => field(blk, k))
+        .filter((s) => s && s !== '-' && s !== '—');
       units.push({
-        name: u[1].trim(), pos: (u[2] || '').trim(),
-        hp: +u[3], atk: +u[4], spd: +u[5], def: +u[6], res: +u[7],
-        weapon: (u[8] || '').trim(),
+        name: field(blk, 'unit'), pos: field(blk, 'pos'),
+        hp: +st[1], atk: +st[2], spd: +st[3], def: +st[4], res: +st[5],
+        weapon: field(blk, 'weapon'), skills,
       });
     }
     if (units.length) difficulties[m[1]] = units;
