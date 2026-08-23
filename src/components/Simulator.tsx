@@ -82,12 +82,13 @@ const VERDICT_META: Record<Verdict, { label: string; cls: string; order: number 
 };
 
 export function Simulator({
-  heroes, owned, stats, initialAttacker, onClose,
+  heroes, owned, stats, initialAttacker, userId, onClose,
 }: {
   heroes: Hero[];
   owned: Set<string>;
   stats: Map<string, CollStats>;
   initialAttacker: Hero | null;
+  userId: string | null; // pour lire tes builds équipés (feh.hero_build)
   onClose: () => void;
 }) {
   const byId = useMemo(() => new Map(heroes.map((h) => [h.id, h])), [heroes]);
@@ -227,7 +228,7 @@ export function Simulator({
     const missing = ids.filter((id) => !weaponInfo.has(id));
     if (missing.length === 0) return;
     let active = true;
-    fetchTeamWeapons(missing).then((m) => {
+    fetchTeamWeapons(missing, userId).then((m) => {
       if (!active) return;
       setWeaponInfo((prev) => {
         const next = new Map(prev);
@@ -236,7 +237,7 @@ export function Simulator({
       });
     });
     return () => { active = false; };
-  }, [team, enMode, enemyHeroId, weaponInfo]);
+  }, [team, enMode, enemyHeroId, weaponInfo, userId]);
 
   // Modificateurs de l'ennemi (auto depuis ses skills wiki + réglage manuel).
   const enemyMods = {

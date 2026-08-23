@@ -728,6 +728,7 @@ export default function App() {
           owned={owned}
           stats={stats}
           initialAttacker={simAttacker}
+          userId={viewUserId ?? user.id}
           onClose={() => setSimOpen(false)}
         />
       )}

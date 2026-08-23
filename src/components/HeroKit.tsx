@@ -3,6 +3,7 @@ import type { SkillRow } from '../lib/useHeroSkills';
 import { fetchHeroStats, type CollStats } from '../lib/collection';
 import { supabase } from '../lib/supabase';
 import { isHighRarity, type SealPick } from '../lib/seals';
+import { BuildEditor } from './BuildEditor';
 
 const REFINE_LABEL: Record<string, string> = {
   atk: 'ATQ',
@@ -165,12 +166,14 @@ export function HeroKit({
   loading,
   heroId,
   userId,
+  readOnly,
   sealPick,
 }: {
   skills: SkillRow[] | null;
   loading: boolean;
   heroId: string;
   userId: string | null; // compte dont on lit les stats (soi-même ou compte consulté)
+  readOnly?: boolean; // consultation d'une autre collection : build en lecture seule
   sealPick?: SealPick | null; // sceau attribué par la répartition globale (unique)
 }) {
   const [stats, setStats] = useState<CollStats | null>(null);
@@ -292,6 +295,8 @@ export function HeroKit({
   return (
     <>
     <div className="space-y-4 px-5 pb-5 pt-3">
+      <BuildEditor heroId={heroId} userId={userId} readOnly={readOnly} learnset={skills} />
+
       {advice ? (
         <div className="rounded-lg border border-gold-deep/40 bg-gold/[0.06] px-3 py-2 text-[12.5px] text-warm-text">
           <span className="font-feh font-semibold text-gold-text">

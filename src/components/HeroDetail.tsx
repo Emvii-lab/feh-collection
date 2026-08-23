@@ -342,6 +342,7 @@ export function HeroDetail({
             loading={skillsLoading}
             heroId={hero.id}
             userId={userId}
+            readOnly={readOnly}
             sealPick={sealPick ?? null}
           />
         ) : (

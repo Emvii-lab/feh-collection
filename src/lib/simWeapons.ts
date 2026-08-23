@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { parseSkillEffects, type ParsedEffects, type SkillRow } from './skillEffects';
+import { fetchBuilds, BUILD_SLOTS } from './builds';
 
 // Efficacité + tous les effets détectables de la meilleure arme de chaque héros
 // (lu depuis feh.skills, via le moteur d'effets). Aucune donnée n'est stockée.
@@ -52,47 +53,76 @@ export async function fetchEnemyCombat(skillNames: string[]): Promise<EnemyComba
   return parseSkillEffects((data ?? []) as SkillRow[]);
 }
 
+type WRow = {
+  wiki_name: string;
+  might: number | null; description: string | null; weapon_effectiveness: string | null;
+  scategory: string | null; cooldown: number | null;
+};
+
+// Effets de combat de chaque héros de l'équipe. Si TON build est enregistré
+// (feh.hero_build), on lit TOUTES tes compétences équipées → précision réelle.
+// Sinon on retombe sur la meilleure arme du kit natif (best-effort, sous-estime).
 export async function fetchTeamWeapons(
   heroIds: string[],
+  userId?: string | null,
 ): Promise<Map<string, WeaponInfo>> {
   const out = new Map<string, WeaponInfo>();
   if (!supabase || heroIds.length === 0) return out;
 
-  // 1) learnset : héros -> noms d'armes.
-  const { data: learn } = await supabase
-    .from('hero_learnset')
-    .select('hero_id, skill_name')
-    .in('hero_id', heroIds);
+  // 0) builds équipés (le cas échéant).
+  const builds = await fetchBuilds(heroIds, userId ?? null);
+  const equipped = new Set<string>();
+  for (const b of builds.values())
+    for (const slot of BUILD_SLOTS) if (b[slot]) equipped.add(b[slot] as string);
+
+  // 1) learnset (pour les héros SANS build → meilleure arme).
+  const noBuild = heroIds.filter((id) => !builds.has(id));
   const namesByHero = new Map<string, string[]>();
-  const allNames = new Set<string>();
-  for (const r of learn ?? []) {
-    const hid = r.hero_id as string;
-    const sn = r.skill_name as string;
-    if (!sn) continue;
-    (namesByHero.get(hid) ?? namesByHero.set(hid, []).get(hid)!).push(sn);
-    allNames.add(sn);
+  const weaponNames = new Set<string>();
+  if (noBuild.length) {
+    const { data: learn } = await supabase
+      .from('hero_learnset')
+      .select('hero_id, skill_name')
+      .in('hero_id', noBuild);
+    for (const r of learn ?? []) {
+      const hid = r.hero_id as string;
+      const sn = r.skill_name as string;
+      if (!sn) continue;
+      (namesByHero.get(hid) ?? namesByHero.set(hid, []).get(hid)!).push(sn);
+      weaponNames.add(sn);
+    }
   }
-  if (allNames.size === 0) return out;
 
-  // 2) détails des armes uniquement.
-  const { data: sk } = await supabase
-    .from('skills')
-    .select('wiki_name, might, description, weapon_effectiveness, scategory, cooldown')
-    .eq('scategory', 'weapon')
-    .in('wiki_name', [...allNames]);
-  type WRow = {
-    might: number | null; description: string | null; weapon_effectiveness: string | null;
-    scategory: string | null; cooldown: number | null;
-  };
-  const weapons = new Map<string, WRow>();
-  for (const s of sk ?? []) weapons.set((s as { wiki_name: string }).wiki_name, s as never);
+  // 2) détails de toutes les compétences utiles (armes du kit + tout ton équipement).
+  const allNames = [...new Set([...equipped, ...weaponNames])];
+  const skillMap = new Map<string, WRow>();
+  if (allNames.length) {
+    const { data: sk } = await supabase
+      .from('skills')
+      .select('wiki_name, might, description, weapon_effectiveness, scategory, cooldown')
+      .in('wiki_name', allNames);
+    for (const s of sk ?? []) skillMap.set((s as WRow).wiki_name, s as WRow);
+  }
 
-  // 3) meilleure arme par héros → effets détectés via le moteur.
+  // 3a) héros AVEC build → moteur d'effets sur toute la panoplie équipée.
+  for (const [hid, b] of builds) {
+    const rows = BUILD_SLOTS.map((s) => b[s])
+      .filter((n): n is string => Boolean(n))
+      .map((n) => skillMap.get(n))
+      .filter((w): w is WRow => Boolean(w));
+    const weaponRow = b.weapon ? skillMap.get(b.weapon) : null;
+    out.set(hid, {
+      effAgainst: normEff(weaponRow?.weapon_effectiveness ?? null),
+      effects: parseSkillEffects(rows as SkillRow[]),
+    });
+  }
+
+  // 3b) héros SANS build → meilleure arme du kit natif.
   for (const [hid, names] of namesByHero) {
     let best: WRow | null = null;
     for (const n of names) {
-      const w = weapons.get(n);
-      if (!w) continue;
+      const w = skillMap.get(n);
+      if (!w || w.scategory !== 'weapon') continue;
       if (!best || effMight(w.might, w.description) > effMight(best.might, best.description)) best = w;
     }
     if (best) {
