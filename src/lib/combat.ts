@@ -38,17 +38,19 @@ export type CombatMods = {
   spdBuff: number; // +VIT en combat (pour le doublon)
   defBuff: number; // +DÉF en combat (encaisse mieux les attaques physiques)
   resBuff: number; // +RÉS en combat (encaisse mieux la magie)
+  bonusDamage: number; // dégâts fixes ajoutés à chaque coup (ex. « deals damage = X »)
   guaranteedFollowup: boolean; // double garanti
   noFollowup: boolean; // ne peut pas doubler
   cannotBeDoubled: boolean; // l'adversaire ne peut pas doubler cette unité
   dmgReductionPct: number; // % de réduction des dégâts SUBIS (0-100)
+  flatDmgReduction: number; // réduction FIXE des dégâts subis (par coup)
   vantage: boolean; // en défense : frappe en premier
 };
 
 export const NO_MODS: CombatMods = {
   brave: false, effAgainst: [], atkBuff: 0, spdBuff: 0, defBuff: 0, resBuff: 0,
-  guaranteedFollowup: false, noFollowup: false, cannotBeDoubled: false,
-  dmgReductionPct: 0, vantage: false,
+  bonusDamage: 0, guaranteedFollowup: false, noFollowup: false, cannotBeDoubled: false,
+  dmgReductionPct: 0, flatDmgReduction: 0, vantage: false,
 };
 
 export type Unit = { hero: Hero; stats: Stats; mods: CombatMods };
@@ -92,8 +94,12 @@ export function computeHit(atk: Unit, def: Unit): HitResult {
     ? def.stats.res + (def.mods.resBuff || 0)
     : def.stats.def + (def.mods.defBuff || 0);
   let dmg = Math.max(0, a - mit);
+  dmg += atk.mods.bonusDamage || 0; // dégâts fixes ajoutés (ex. « = compteur × N »)
   if (def.mods.dmgReductionPct > 0) {
     dmg = Math.max(0, Math.round(dmg * (1 - def.mods.dmgReductionPct / 100)));
+  }
+  if (def.mods.flatDmgReduction > 0) {
+    dmg = Math.max(0, dmg - def.mods.flatDmgReduction); // réduction FIXE après le %
   }
   // Doublon : garanti, ou VIT (avec bonus) ≥ +5, sauf "noFollowup" / "cannotBeDoubled".
   const spdOk =

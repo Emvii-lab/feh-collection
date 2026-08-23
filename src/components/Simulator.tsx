@@ -53,7 +53,8 @@ type EnemyState = {
   stats: Record<StatKey, string>;
   brave: boolean; effAgainst: string[];
   atkBuff: number; spdBuff: number; defBuff: number; resBuff: number;
-  dmgReductionPct: number;
+  bonusDamage: number; flatDmgReduction: number; dmgReductionPct: number;
+  foeAtk: number; foeSpd: number; foeDef: number; foeRes: number; // malus infligés à TON unité
   guaranteedFollowup: boolean; cannotBeDoubled: boolean; vantage: boolean;
   autoNote?: string; // récap des effets auto-appliqués depuis les skills du wiki
 };
@@ -150,7 +151,9 @@ export function Simulator({
         def: String(r.def), res: String(r.res),
       },
       // on repart propre puis on applique les effets détectés
-      atkBuff: 0, spdBuff: 0, defBuff: 0, resBuff: 0, dmgReductionPct: 0,
+      atkBuff: 0, spdBuff: 0, defBuff: 0, resBuff: 0,
+      bonusDamage: 0, flatDmgReduction: 0, dmgReductionPct: 0,
+      foeAtk: 0, foeSpd: 0, foeDef: 0, foeRes: 0,
       brave: false, guaranteedFollowup: false, autoNote: 'Lecture des compétences…',
     }));
     const c = await fetchEnemyCombat(u.skills);
@@ -158,18 +161,28 @@ export function Simulator({
       c.atkBuff ? `ATQ+${c.atkBuff}` : '', c.spdBuff ? `VIT+${c.spdBuff}` : '',
       c.defBuff ? `DÉF+${c.defBuff}` : '', c.resBuff ? `RÉS+${c.resBuff}` : '',
     ].filter(Boolean).join(' ');
+    const foe = [
+      c.foeAtk ? `ATQ-${c.foeAtk}` : '', c.foeSpd ? `VIT-${c.foeSpd}` : '',
+      c.foeDef ? `DÉF-${c.foeDef}` : '', c.foeRes ? `RÉS-${c.foeRes}` : '',
+    ].filter(Boolean).join(' ');
     const parts = [
-      b, c.dmgReductionPct ? `réduc. ${c.dmgReductionPct}%` : '',
+      b,
+      c.bonusDamage ? `+${c.bonusDamage} dégâts/coup` : '',
+      c.dmgReductionPct ? `réduc. ${c.dmgReductionPct}%` : '',
+      c.flatDmgReduction ? `−${c.flatDmgReduction} dégâts subis` : '',
+      foe ? `t'inflige ${foe}` : '',
       c.brave ? 'Brave' : '', c.guaranteedFollowup ? 'double garanti' : '',
     ].filter(Boolean);
     setEnemy((e) => ({
       ...e,
       atkBuff: c.atkBuff, spdBuff: c.spdBuff, defBuff: c.defBuff, resBuff: c.resBuff,
-      dmgReductionPct: c.dmgReductionPct, brave: c.brave,
-      guaranteedFollowup: c.guaranteedFollowup,
+      bonusDamage: c.bonusDamage, flatDmgReduction: c.flatDmgReduction,
+      dmgReductionPct: c.dmgReductionPct,
+      foeAtk: c.foeAtk, foeSpd: c.foeSpd, foeDef: c.foeDef, foeRes: c.foeRes,
+      brave: c.brave, guaranteedFollowup: c.guaranteedFollowup,
       autoNote: parts.length
         ? 'Auto depuis ses compétences : ' + parts.join(' · ')
-        : 'Aucun effet fixe détecté (ses skills sont à formules, non captés).',
+        : 'Aucun effet fixe détecté (ses skills sont à formules non captées).',
     }));
   };
 
@@ -178,7 +191,9 @@ export function Simulator({
       color: 'red', weapon: 'Sword', move: 'Infantry',
       stats: { hp: '', atk: '', spd: '', def: '', res: '' },
       brave: false, effAgainst: [],
-      atkBuff: 0, spdBuff: 0, defBuff: 0, resBuff: 0, dmgReductionPct: 0,
+      atkBuff: 0, spdBuff: 0, defBuff: 0, resBuff: 0,
+      bonusDamage: 0, flatDmgReduction: 0, dmgReductionPct: 0,
+      foeAtk: 0, foeSpd: 0, foeDef: 0, foeRes: 0,
       guaranteedFollowup: false, cannotBeDoubled: false, vantage: false,
     }),
   );
@@ -216,6 +231,7 @@ export function Simulator({
   const enemyMods = {
     ...NO_MODS, brave: enemy.brave, effAgainst: enemy.effAgainst,
     atkBuff: enemy.atkBuff, spdBuff: enemy.spdBuff, defBuff: enemy.defBuff, resBuff: enemy.resBuff,
+    bonusDamage: enemy.bonusDamage ?? 0, flatDmgReduction: enemy.flatDmgReduction ?? 0,
     dmgReductionPct: enemy.dmgReductionPct, guaranteedFollowup: enemy.guaranteedFollowup,
     cannotBeDoubled: enemy.cannotBeDoubled, vantage: enemy.vantage,
   };
@@ -252,13 +268,16 @@ export function Simulator({
     if (!h || !s) return null;
     const wi = weaponInfo.get(id) ?? NO_WI;
     const pu = unitMods.get(id) ?? { atkBuff: 0, guaranteedFollowup: false, dmgReductionPct: 0 };
+    // Malus que l'ennemi t'inflige (ex. « Inflicts Spd/Res-4 on foe ») → baissent TES stats.
+    const foeAtk = enemy.foeAtk ?? 0, foeSpd = enemy.foeSpd ?? 0;
+    const foeDef = enemy.foeDef ?? 0, foeRes = enemy.foeRes ?? 0;
     return {
       hero: h, stats: s,
       mods: {
         ...NO_MODS, brave: wi.brave, effAgainst: wi.effAgainst,
-        // bonus en combat auto (arme) + réglage manuel de l'ATQ
-        atkBuff: wi.atkBuff + pu.atkBuff,
-        spdBuff: wi.spdBuff, defBuff: wi.defBuff, resBuff: wi.resBuff,
+        // bonus en combat auto (arme) + réglage manuel de l'ATQ − malus infligés par l'ennemi
+        atkBuff: wi.atkBuff + pu.atkBuff - foeAtk,
+        spdBuff: wi.spdBuff - foeSpd, defBuff: wi.defBuff - foeDef, resBuff: wi.resBuff - foeRes,
         guaranteedFollowup: pu.guaranteedFollowup, dmgReductionPct: pu.dmgReductionPct,
       },
     };
