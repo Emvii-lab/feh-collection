@@ -16,11 +16,17 @@ export type BattleUnit = {
   hp: number; // PV courants
   active: boolean; // ennemis passifs : dormant tant que non déclenché
   charge?: number; // compteur courant de spéciale (persistant). Absent = plein (maxCd).
+  refresher?: boolean; // danseuse/chanteuse : rejoue un allié
 };
 
 // Compteur de spéciale courant d'une unité (plein par défaut).
 const curCharge = (bu: BattleUnit): number =>
   bu.charge ?? (bu.unit.mods.special.kind !== 'none' ? bu.unit.mods.special.maxCd : 0);
+
+// Détecte une danseuse/chanteuse depuis ses compétences (assist de rejeu).
+const REFRESH_RE = /\b(?:dance|sing)\b|gray waves|whimsical dream|tender dream|blizzard|geirsk|virtuoso/i;
+export const isRefresher = (skillNames: string[]): boolean =>
+  skillNames.some((n) => REFRESH_RE.test(n));
 export type Board = {
   units: BattleUnit[];
   terrain: TerrainMap;
@@ -89,12 +95,14 @@ export function enemyPhase(board: Board): { board: Board; moves: EnemyMove[] } {
   if (board.linked && anyActive) for (const e of enemies()) e.active = true;
 
   // 2) Chaque ennemi actif agit (dans l'ordre des unités).
-  for (const e of enemies()) {
-    if (!e.active || !alive(e)) continue;
-    const move = moveAllowance(e.unit.hero.moveType);
-    const cls = moveClass(e.unit.hero.moveType);
+  // Action complète d'UN ennemi (soin, sinon meilleure attaque, sinon avance).
+  // Renvoie true s'il a attaqué (utile aux danseuses). `move`=false : sans déplacement.
+  const actEnemy = (e: BattleUnit, allowMove = true): boolean => {
+    if (!alive(e)) return false;
     const range = weaponRange(e.unit.hero.weaponType);
-    const reach = reachable(e.pos, move, cls, terrain, blockedBy(units, e));
+    const reach = allowMove
+      ? reachable(e.pos, moveAllowance(e.unit.hero.moveType), moveClass(e.unit.hero.moveType), terrain, blockedBy(units, e))
+      : new Set([e.pos]);
     const occ = blockedBy(units, e);
 
     // Soigneur (bâton) : soigne l'allié le plus amoché à portée, plutôt qu'attaquer.
@@ -114,7 +122,7 @@ export function enemyPhase(board: Board): { board: Board; moves: EnemyMove[] } {
         const from = e.pos; e.pos = healTile;
         const done = heal - healTgt.hp; healTgt.hp = heal;
         moves.push({ id: e.id, name: e.unit.hero.name, from, to: healTile, target: healTgt.id, heal: done });
-        continue; // le soigneur a agi
+        return false;
       }
     }
 
@@ -147,7 +155,9 @@ export function enemyPhase(board: Board): { board: Board; moves: EnemyMove[] } {
         id: e.id, name: e.unit.hero.name, from, to: best.tile, target: best.target.id,
         dmg: sim.atk.total, kills: sim.ko, selfKilled: e.hp <= 0,
       });
-    } else if (as.length) {
+      return true;
+    }
+    if (allowMove && as.length) {
       // Pas de cible atteignable → avancer vers l'allié le plus proche.
       let dest = e.pos, bestD = Infinity;
       for (const t of reach) {
@@ -155,10 +165,26 @@ export function enemyPhase(board: Board): { board: Board; moves: EnemyMove[] } {
         const d = Math.min(...as.map((a) => manhattan(t, a.pos)));
         if (d < bestD) { bestD = d; dest = t; }
       }
-      if (dest !== e.pos) {
-        moves.push({ id: e.id, name: e.unit.hero.name, from: e.pos, to: dest });
-        e.pos = dest;
-      }
+      if (dest !== e.pos) { moves.push({ id: e.id, name: e.unit.hero.name, from: e.pos, to: dest }); e.pos = dest; }
+    }
+    return false;
+  };
+
+  // Les non-danseuses agissent d'abord ; on retient qui a attaqué.
+  const acted = new Set<string>();
+  for (const e of enemies()) {
+    if (!e.active || !alive(e) || e.refresher) continue;
+    if (actEnemy(e)) acted.add(e.id);
+  }
+  // Danseuses : rejouent un allié adjacent qui a déjà attaqué (2e action, sans déplacement).
+  for (const d of enemies()) {
+    if (!d.refresher || !d.active || !alive(d)) continue;
+    const target = enemies()
+      .filter((o) => o.id !== d.id && alive(o) && acted.has(o.id) && manhattan(d.pos, o.pos) <= 1)
+      .sort((x, y) => y.hp - x.hp)[0]; // le plus en forme (le plus utile à rejouer)
+    if (target) {
+      moves.push({ id: d.id, name: d.unit.hero.name, from: d.pos, to: d.pos, target: target.id });
+      actEnemy(target); // rejoue (déplacement + attaque)
     }
   }
 

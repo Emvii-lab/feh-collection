@@ -7,6 +7,7 @@ import {
 } from '../lib/combat';
 import { type SolveResult } from '../lib/solver';
 import type { SolverResponse } from '../lib/solverWorker';
+import { isRefresher } from '../lib/battle';
 import type { Board, BattleUnit } from '../lib/battle';
 import type { SearchResult, SearchUnit } from '../lib/teamSearch';
 import { fetchTeamWeapons, fetchEnemyCombat, EMPTY_EFFECTS, type WeaponInfo, type EnemyCombat } from '../lib/simWeapons';
@@ -389,7 +390,7 @@ export function Simulator({
             stats: { hp: e.hp, atk: e.atk, spd: e.spd, def: e.def, res: e.res },
             mods: toMods(mods[i], []),
           },
-          pos: e.pos.toLowerCase(), hp: e.hp, active: !passive,
+          pos: e.pos.toLowerCase(), hp: e.hp, active: !passive, refresher: isRefresher(e.skills),
         };
       });
       const allyUnits: BattleUnit[] = [];
@@ -474,7 +475,7 @@ export function Simulator({
             hero: { id: 'E' + i, name: e.name, title: '', color: r.color, weaponType: r.weaponType, moveType: r.moveType, rarity: 5, origin: '' } as Hero,
             stats: { hp: e.hp, atk: e.atk, spd: e.spd, def: e.def, res: e.res }, mods: toMods(emods[i], []),
           },
-          pos: e.pos.toLowerCase(), hp: e.hp, active: !passive,
+          pos: e.pos.toLowerCase(), hp: e.hp, active: !passive, refresher: isRefresher(e.skills),
         };
       });
       if (pool.length < Math.min(4, wikiMap.allyPos.length || 4)) {
