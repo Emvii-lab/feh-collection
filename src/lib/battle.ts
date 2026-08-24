@@ -15,7 +15,12 @@ export type BattleUnit = {
   pos: string;
   hp: number; // PV courants
   active: boolean; // ennemis passifs : dormant tant que non déclenché
+  charge?: number; // compteur courant de spéciale (persistant). Absent = plein (maxCd).
 };
+
+// Compteur de spéciale courant d'une unité (plein par défaut).
+const curCharge = (bu: BattleUnit): number =>
+  bu.charge ?? (bu.unit.mods.special.kind !== 'none' ? bu.unit.mods.special.maxCd : 0);
 export type Board = {
   units: BattleUnit[];
   terrain: TerrainMap;
@@ -121,7 +126,7 @@ export function enemyPhase(board: Board): { board: Board; moves: EnemyMove[] } {
       for (const t of reach) {
         if (t !== e.pos && occ.has(t)) continue; // on ne s'arrête pas sur une case occupée
         if (manhattan(t, a.pos) > range) continue;
-        const sim = simulate(atTile(e, t, terrain), atTile(a, a.pos, terrain));
+        const sim = simulate(atTile(e, t, terrain), atTile(a, a.pos, terrain), { atk: curCharge(e), def: curCharge(a) });
         if (sim.atk.total <= 0) continue; // l'IA n'attaque pas une cible à qui elle fait 0 dégât
         const opt: Option = {
           tile: t, target: a, dmg: sim.atk.total, kills: sim.ko,
@@ -132,10 +137,11 @@ export function enemyPhase(board: Board): { board: Board; moves: EnemyMove[] } {
     }
 
     if (best) {
-      const sim = simulate(atTile(e, best.tile, terrain), atTile(best.target, best.target.pos, terrain));
+      const sim = simulate(atTile(e, best.tile, terrain), atTile(best.target, best.target.pos, terrain), { atk: curCharge(e), def: curCharge(best.target) });
       const from = e.pos;
       e.pos = best.tile;
       best.target.hp = sim.defHpAfter;
+      e.charge = sim.chargeAfter.atk; best.target.charge = sim.chargeAfter.def; // jauge persistante
       if (sim.counter) e.hp = sim.counter.atkHpAfter;
       moves.push({
         id: e.id, name: e.unit.hero.name, from, to: best.tile, target: best.target.id,
@@ -186,7 +192,7 @@ export function attackOptionsFor(board: Board, id: string): AttackOption[] {
     if (t !== u.pos && occ.has(t)) continue;
     for (const f of foes) {
       if (manhattan(t, f.pos) > range) continue;
-      const sim = simulate(atTile(u, t, board.terrain), atTile(f, f.pos, board.terrain));
+      const sim = simulate(atTile(u, t, board.terrain), atTile(f, f.pos, board.terrain), { atk: curCharge(u), def: curCharge(f) });
       if (sim.atk.total <= 0) continue; // inutile d'attaquer pour 0 dégât
       out.push({ tile: t, targetId: f.id, dmg: sim.atk.total, kills: sim.ko, selfKilled: sim.counter?.atkKo ?? false });
     }
@@ -199,9 +205,10 @@ export function applyPlayerAttack(board: Board, id: string, tile: string, target
   const units = board.units.map((u) => ({ ...u }));
   const u = units.find((x) => x.id === id)!;
   const f = units.find((x) => x.id === targetId)!;
-  const sim = simulate(atTile(u, tile, board.terrain), atTile(f, f.pos, board.terrain));
+  const sim = simulate(atTile(u, tile, board.terrain), atTile(f, f.pos, board.terrain), { atk: curCharge(u), def: curCharge(f) });
   u.pos = tile;
   f.hp = sim.defHpAfter;
+  u.charge = sim.chargeAfter.atk; f.charge = sim.chargeAfter.def; // jauge de spéciale persistante
   if (f.side === 'enemy') f.active = true; // un ennemi attaqué se réveille (le groupe suit si linked)
   if (sim.counter) u.hp = sim.counter.atkHpAfter;
   return { ...board, units };
@@ -216,7 +223,7 @@ export function applyMove(board: Board, id: string, tile: string): Board {
 // Empreinte d'un état (positions + PV + activation) pour la table de transposition.
 export function hashBoard(board: Board): string {
   return board.units
-    .map((u) => `${u.id}@${u.pos}:${Math.max(0, u.hp)}${u.active ? 'a' : ''}`)
+    .map((u) => `${u.id}@${u.pos}:${Math.max(0, u.hp)}${u.active ? 'a' : ''}c${curCharge(u)}`)
     .sort()
     .join('|');
 }

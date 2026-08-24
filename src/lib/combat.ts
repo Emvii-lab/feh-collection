@@ -182,7 +182,10 @@ export type Sim = {
   ko: boolean;
   counter: (HitResult & { atkHpAfter: number; atkKo: boolean }) | null;
   vantage: boolean; // le défenseur a riposté en premier
+  chargeAfter: { atk: number; def: number }; // jauge de spéciale restante (pour la persistance)
 };
+// Jauges de départ (compteur courant de spéciale) transmises entre combats d'un tour.
+export type StartCharges = { atk?: number; def?: number };
 
 // État d'un combattant pendant l'échange (PV + jauge de spéciale).
 type Fighter = {
@@ -194,10 +197,11 @@ type Fighter = {
   hitCount: number;
   first: StrikeMeta | null;
 };
-function mkFighter(u: Unit): Fighter {
+function mkFighter(u: Unit, startCharge?: number): Fighter {
   const s = u.mods.special && u.mods.special.kind !== 'none' && u.mods.special.maxCd > 0
     ? u.mods.special : null;
-  return { u, hp: u.stats.hp, spec: s, charge: s ? s.maxCd : Infinity, dmgTotal: 0, hitCount: 0, first: null };
+  const charge = s ? Math.max(0, Math.min(s.maxCd, startCharge ?? s.maxCd)) : Infinity;
+  return { u, hp: u.stats.hp, spec: s, charge, dmgTotal: 0, hitCount: 0, first: null };
 }
 
 // Une frappe (ou 2 si Brave) de S vers R, en gérant la jauge de spéciale.
@@ -226,9 +230,10 @@ function doStrike(S: Fighter, R: Fighter) {
 }
 
 // Échange complet, coup par coup (jauge de spéciale + Vantage + doublons).
-export function simulate(attacker: Unit, defender: Unit): Sim {
-  const A = mkFighter(attacker);
-  const D = mkFighter(defender);
+// `start` = jauges de spéciale courantes (persistance d'un combat à l'autre).
+export function simulate(attacker: Unit, defender: Unit, start?: StartCharges): Sim {
+  const A = mkFighter(attacker, start?.atk);
+  const D = mkFighter(defender, start?.def);
   const canCtr = canCounter(attacker, defender);
   const vantage = canCtr && defender.mods.vantage;
   const aDouble = doubles(attacker, defender);
@@ -248,7 +253,11 @@ export function simulate(attacker: Unit, defender: Unit): Sim {
   const counter = D.hitCount > 0
     ? { ...toHit(D), atkHpAfter: Math.max(0, A.hp), atkKo: A.hp <= 0 }
     : null;
-  return { atk: toHit(A), defHpAfter: Math.max(0, D.hp), ko: D.hp <= 0, counter, vantage };
+  const chargeAfter = {
+    atk: A.spec ? A.charge : (start?.atk ?? 0),
+    def: D.spec ? D.charge : (start?.def ?? 0),
+  };
+  return { atk: toHit(A), defHpAfter: Math.max(0, D.hp), ko: D.hp <= 0, counter, vantage, chargeAfter };
 }
 
 // Verdict synthétique pour la vue équipe.
