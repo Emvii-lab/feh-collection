@@ -13,6 +13,7 @@ export type WikiMap = {
   title: string;
   difficulties: Record<string, WikiEnemy[]>;
   allyPos: string[]; // cases de départ des alliés
+  terrain: Record<string, 'wall' | 'forest' | 'water' | 'trench'>; // murs lus du wiki (le reste = plaine)
 };
 
 export type ResolvedEnemy = WikiEnemy & {
@@ -80,7 +81,19 @@ export async function fetchWikiMap(pageTitle: string): Promise<WikiMap> {
   const allyPos = allyM
     ? allyM[1].split(',').map((s) => s.trim()).filter(Boolean)
     : [];
-  return { title: pageTitle, difficulties, allyPos };
+
+  // Terrain : grille par case du wiki (« | b8={{Wall|… »). Seul le mur est encodé
+  // de façon fiable (forêt/eau/mer sont dans l'image de fond → à peindre à la main).
+  const terrain: WikiMap['terrain'] = {};
+  const TERR: Record<string, WikiMap['terrain'][string]> = {
+    wall: 'wall', forest: 'forest', water: 'water', trench: 'trench',
+  };
+  for (const m of wt.matchAll(/\|\s*([a-f][1-8])\s*=\s*\{\{(\w+)/g)) {
+    const t = TERR[m[2].toLowerCase()];
+    if (t) terrain[m[1].toLowerCase()] = t;
+  }
+
+  return { title: pageTitle, difficulties, allyPos, terrain };
 }
 
 // Déduit couleur / type d'arme / déplacement : d'abord via tes héros (nom exact),

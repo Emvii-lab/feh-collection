@@ -1,6 +1,6 @@
-// Couche A du positionnement : portées de déplacement, cases d'attaque, zones de
-// menace. Déterministe et vérifiable. NE MODÉLISE PAS le terrain (murs/forêts/eau)
-// ni les déplacements spéciaux ni l'IA : c'est une aide visuelle, pas une garantie.
+// Couche B du positionnement : déplacement AVEC terrain (murs/forêts/eau) et
+// portées d'attaque / zones de menace. Les murs sont lus du wiki ; forêts/eau se
+// peignent à la main (le wiki ne les encode pas). NE MODÉLISE PAS l'IA ennemie.
 
 export const COLS = ['a', 'b', 'c', 'd', 'e', 'f'];
 
@@ -10,16 +10,36 @@ export function parsePos(pos: string): { x: number; y: number } | null {
 }
 export const toPos = (x: number, y: number) => COLS[x] + y;
 
-// Allocation de déplacement par type (FR ou EN). Cavalier 3, Cuirassé 1, sinon 2.
-export function moveAllowance(moveType: string): number {
+// Terrain d'une case (absent = plaine).
+export type Terrain = 'plain' | 'wall' | 'forest' | 'water' | 'trench';
+export type TerrainMap = Record<string, Terrain>;
+
+export type MoveClass = 'inf' | 'cav' | 'arm' | 'fly';
+export function moveClass(moveType: string): MoveClass {
   const m = (moveType || '').toLowerCase();
-  if (/caval/.test(m)) return 3;
-  if (/armor|cuiras/.test(m)) return 1;
-  return 2; // fantassin / volant
+  if (/caval/.test(m)) return 'cav';
+  if (/armor|cuiras/.test(m)) return 'arm';
+  if (/fly|vol/.test(m)) return 'fly';
+  return 'inf';
 }
-// Portée d'arme : distance (Arc/Dague/Tome/Bâton = 2, corps-à-corps = 1).
+// Budget de déplacement : Cavalier 3, Cuirassé 1, Fantassin/Volant 2.
+export function moveAllowance(moveType: string): number {
+  const c = moveClass(moveType);
+  return c === 'cav' ? 3 : c === 'arm' ? 1 : 2;
+}
+// Portée d'arme (Arc/Dague/Tome/Bâton = 2, corps-à-corps = 1).
 export function weaponRange(weaponType: string): number {
   return /bow|arc|dagger|dague|tome|staff|b[aâ]ton/i.test(weaponType || '') ? 2 : 1;
+}
+
+// Coût pour ENTRER sur une case selon le terrain et le type. Infinity = infranchissable.
+function enterCost(terrain: Terrain, cls: MoveClass): number {
+  if (terrain === 'wall') return Infinity; // mur : bloque tout, volants inclus
+  if (cls === 'fly') return 1; // les volants ignorent forêt/eau/fossé
+  if (terrain === 'water') return Infinity; // eau : seuls les volants passent
+  if (terrain === 'forest') return cls === 'cav' ? Infinity : 2; // cavalerie : forêt infranchissable
+  if (terrain === 'trench') return cls === 'cav' ? 3 : 1; // fossé : ralentit la cavalerie
+  return 1;
 }
 
 export const manhattan = (a: string, b: string): number => {
@@ -27,28 +47,33 @@ export const manhattan = (a: string, b: string): number => {
   return pa && pb ? Math.abs(pa.x - pb.x) + Math.abs(pa.y - pb.y) : 99;
 };
 
-// Cases atteignables en `move` pas (parcours en largeur, 4 voisins). `blocked` =
-// cases infranchissables (on ne peut pas les traverser).
-export function reachable(start: string, move: number, blocked: Set<string>): Set<string> {
-  const s = parsePos(start);
+// Cases atteignables (Dijkstra pondéré par le terrain). `blocked` = unités
+// infranchissables (ennemis pour toi, alliés pour l'ennemi).
+export function reachable(
+  start: string, move: number, cls: MoveClass, terrain: TerrainMap, blocked: Set<string>,
+): Set<string> {
   const out = new Set<string>();
-  if (!s) return out;
+  if (!parsePos(start)) return out;
+  const dist = new Map<string, number>([[start, 0]]);
   out.add(start);
-  const seen = new Set([start]);
-  let frontier: [number, number, number][] = [[s.x, s.y, 0]];
-  while (frontier.length) {
-    const next: [number, number, number][] = [];
-    for (const [x, y, d] of frontier) {
-      if (d >= move) continue;
-      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-        const nx = x + dx, ny = y + dy;
-        if (nx < 0 || nx > 5 || ny < 1 || ny > 8) continue;
-        const np = toPos(nx, ny);
-        if (seen.has(np) || blocked.has(np)) continue;
-        seen.add(np); out.add(np); next.push([nx, ny, d + 1]);
+  const pq: [number, string][] = [[0, start]];
+  while (pq.length) {
+    pq.sort((a, b) => a[0] - b[0]);
+    const [d, pos] = pq.shift()!;
+    if (d > (dist.get(pos) ?? Infinity)) continue;
+    const p = parsePos(pos)!;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = p.x + dx, ny = p.y + dy;
+      if (nx < 0 || nx > 5 || ny < 1 || ny > 8) continue;
+      const np = toPos(nx, ny);
+      if (blocked.has(np)) continue;
+      const c = enterCost(terrain[np] ?? 'plain', cls);
+      if (!isFinite(c)) continue;
+      const nd = d + c;
+      if (nd <= move && nd < (dist.get(np) ?? Infinity)) {
+        dist.set(np, nd); out.add(np); pq.push([nd, np]);
       }
     }
-    frontier = next;
   }
   return out;
 }
@@ -64,11 +89,13 @@ export function attackFrom(
   return out;
 }
 
-// Zone menacée = toutes les cases à portée d'arme depuis une case atteignable.
+// Zone menacée = toutes les cases à portée d'arme depuis une case atteignable
+// (les attaques à distance ignorent les murs en FEH → simple portée de Manhattan).
 export function threatZone(
-  start: string, move: number, range: number, blocked: Set<string>,
+  start: string, move: number, cls: MoveClass, range: number,
+  terrain: TerrainMap, blocked: Set<string>,
 ): Set<string> {
-  const reach = reachable(start, move, blocked);
+  const reach = reachable(start, move, cls, terrain, blocked);
   const out = new Set<string>();
   for (const r of reach) {
     const p = parsePos(r)!;

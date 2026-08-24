@@ -12,7 +12,8 @@ import {
   type WikiEnemy, type WikiMap,
 } from '../lib/wikiMap';
 import {
-  reachable, attackFrom, threatZone, moveAllowance, weaponRange,
+  reachable, attackFrom, threatZone, moveAllowance, weaponRange, moveClass,
+  type Terrain, type TerrainMap,
 } from '../lib/tactics';
 
 // Persistance légère (équipe + carte ennemie) entre les ouvertures / rechargements.
@@ -483,6 +484,8 @@ export function Simulator({
                         selectedPos={wikiSel}
                         heroByName={heroByName}
                         onPick={pickWikiEnemy}
+                        wikiTerrain={wikiMap.terrain}
+                        mapKey={wikiMap.title}
                       />
                       <div className="mt-2 flex flex-wrap gap-1.5">
                         {(wikiMap.difficulties[wikiDiff] ?? []).map((u, i) => (
@@ -657,8 +660,17 @@ const shortLabel = (n: string) =>
 // Grille tactique 6×8 (comme le wiki) : ennemis placés + cases de départ alliées.
 // Couche A : sélectionne un de tes persos pour voir sa portée de déplacement, les
 // cases d'où il frappe l'ennemi choisi, et la zone de menace de cet ennemi.
+const TERRAIN_BG: Record<Terrain, string> = {
+  plain: '', wall: 'bg-stone-500/70', forest: 'bg-green-800/50',
+  water: 'bg-blue-700/45', trench: 'bg-amber-900/40',
+};
+const BRUSHES: { t: Terrain; label: string }[] = [
+  { t: 'plain', label: 'Plaine' }, { t: 'wall', label: 'Mur' },
+  { t: 'forest', label: 'Forêt' }, { t: 'water', label: 'Eau' },
+];
+
 function MapGrid({
-  enemies, allyPos, team, selectedPos, heroByName, onPick,
+  enemies, allyPos, team, selectedPos, heroByName, onPick, wikiTerrain, mapKey,
 }: {
   enemies: WikiEnemy[];
   allyPos: string[];
@@ -666,6 +678,8 @@ function MapGrid({
   selectedPos: string;
   heroByName: (n: string) => Hero | undefined;
   onPick: (u: WikiEnemy) => void;
+  wikiTerrain: TerrainMap;
+  mapKey: string;
 }) {
   const enemyAt = new Map(enemies.map((e) => [e.pos.toLowerCase(), e]));
   const allyOrder = allyPos.map((p) => p.toLowerCase()); // ordonné : 1re case → 1er perso
@@ -674,6 +688,22 @@ function MapGrid({
 
   const [selAlly, setSelAlly] = useState<number | null>(null);
   const [showThreat, setShowThreat] = useState(true);
+  const [brush, setBrush] = useState<Terrain | null>(null); // pinceau terrain actif
+  // Terrain édité à la main (persisté par carte), fusionné par-dessus le wiki.
+  const tKey = 'feh.sim.terrain.' + mapKey;
+  const [edits, setEdits] = useState<TerrainMap>(() => load<TerrainMap>(tKey, {}));
+  useEffect(() => { setEdits(load<TerrainMap>(tKey, {})); }, [tKey]);
+  const terrain: TerrainMap = { ...wikiTerrain, ...edits };
+  const paint = (pos: string) => {
+    setEdits((prev) => {
+      const next = { ...prev };
+      if (brush === 'plain') next[pos] = 'plain';
+      else next[pos] = brush as Terrain;
+      save(tKey, next);
+      return next;
+    });
+  };
+
   // Alliés effectivement posés sur une case de départ.
   const placed = team
     .map((h, i) => ({ hero: h, idx: i, pos: allyOrder[i] }))
@@ -683,12 +713,12 @@ function MapGrid({
   const allyPosSet = new Set(placed.map((p) => p.pos));
   const occupied = new Set([...enemyPos, ...allyPosSet]);
 
-  // Portée + cases d'attaque de l'allié sélectionné.
+  // Portée + cases d'attaque de l'allié sélectionné (terrain pris en compte).
   let reachSet = new Set<string>();
   let attackSet = new Set<string>();
   const sel = selAlly != null ? placed.find((p) => p.idx === selAlly) : undefined;
   if (sel) {
-    reachSet = reachable(sel.pos, moveAllowance(sel.hero.moveType), enemyPos);
+    reachSet = reachable(sel.pos, moveAllowance(sel.hero.moveType), moveClass(sel.hero.moveType), terrain, enemyPos);
     if (selectedPos) {
       attackSet = attackFrom(reachSet, selectedPos, weaponRange(sel.hero.weaponType), occupied);
     }
@@ -700,7 +730,7 @@ function MapGrid({
     if (se) {
       const r = resolveEnemy(se, heroByName);
       const blocked = new Set([...allyPosSet, ...[...enemyPos].filter((p) => p !== selectedPos)]);
-      threatSet = threatZone(selectedPos, moveAllowance(r.moveType), weaponRange(r.weaponType), blocked);
+      threatSet = threatZone(selectedPos, moveAllowance(r.moveType), moveClass(r.moveType), weaponRange(r.weaponType), terrain, blocked);
     }
   }
 
@@ -730,6 +760,36 @@ function MapGrid({
           </label>
         </div>
       ) : null}
+      {/* Pinceau terrain (le wiki ne donne que les murs → peins forêt/eau à la main). */}
+      <div className="mb-1.5 flex flex-wrap items-center justify-center gap-1">
+        <span className="text-[9.5px] text-warm-mute">Terrain :</span>
+        {BRUSHES.map((b) => (
+          <button
+            key={b.t}
+            type="button"
+            onClick={() => setBrush((x) => (x === b.t ? null : b.t))}
+            className={`rounded px-1.5 py-0.5 text-[10px] transition ${
+              brush === b.t ? 'bg-gold/80 text-black' : 'bg-black/40 text-warm-dim hover:bg-black/60'
+            }`}
+          >
+            {b.label}
+          </button>
+        ))}
+        {Object.keys(edits).length ? (
+          <button
+            type="button"
+            onClick={() => { setEdits({}); save(tKey, {}); }}
+            className="rounded px-1.5 py-0.5 text-[10px] text-warm-mute hover:text-red-300"
+          >
+            réinitialiser
+          </button>
+        ) : null}
+      </div>
+      {brush ? (
+        <p className="mb-1 text-center text-[9px] text-gold-text/80">
+          Clique une case pour la peindre en « {BRUSHES.find((b) => b.t === brush)?.label} ».
+        </p>
+      ) : null}
       <div className="grid gap-[2px]" style={{ gridTemplateColumns: 'repeat(6, 1fr)' }}>
         {rows.flatMap((r) =>
           cols.map((c) => {
@@ -742,18 +802,17 @@ function MapGrid({
             const isAttack = attackSet.has(pos);
             const isReach = reachSet.has(pos) && !isAttack;
             const isThreat = threatSet.has(pos);
-            const tint = isAttack
-              ? 'bg-amber-400/35'
-              : isReach
-                ? 'bg-sky-500/20'
-                : isAlly ? 'bg-sky-500/10' : 'bg-black/25';
+            const terr = terrain[pos] ?? 'plain';
+            const terrBg = TERRAIN_BG[terr] || (isAlly ? 'bg-sky-500/10' : 'bg-black/25');
+            const overlay = isAttack ? 'bg-amber-400/45' : isReach ? 'bg-sky-500/30' : '';
             return (
               <div
                 key={pos}
                 className={`relative aspect-square rounded-[3px] border ${
                   isAlly ? 'border-sky-400/40' : 'border-white/[0.06]'
-                } ${tint} ${isThreat ? 'shadow-[inset_0_0_0_2px_rgba(248,113,113,0.55)]' : ''}`}
+                } ${terrBg} ${isThreat ? 'shadow-[inset_0_0_0_2px_rgba(248,113,113,0.55)]' : ''}`}
               >
+                {overlay ? <span className={`pointer-events-none absolute inset-0 rounded-[3px] ${overlay}`} /> : null}
                 {en ? (
                   <button
                     type="button"
@@ -791,6 +850,14 @@ function MapGrid({
                 ) : isAlly ? (
                   <span className="absolute inset-0 flex items-center justify-center text-[9px] text-sky-300/70">▲</span>
                 ) : null}
+                {brush ? (
+                  <button
+                    type="button"
+                    onClick={() => paint(pos)}
+                    title={`Peindre ${pos}`}
+                    className="absolute inset-0 z-20 rounded-[3px] ring-1 ring-inset ring-gold/30 hover:ring-gold/70"
+                  />
+                ) : null}
               </div>
             );
           }),
@@ -800,9 +867,12 @@ function MapGrid({
         <span><span className="inline-block h-2 w-2 rounded-[1px] bg-sky-500/40 align-middle" /> déplacement</span>
         <span><span className="inline-block h-2 w-2 rounded-[1px] bg-amber-400/60 align-middle" /> d'ici tu frappes</span>
         <span><span className="inline-block h-2 w-2 rounded-[1px] align-middle shadow-[inset_0_0_0_2px_rgba(248,113,113,0.7)]" /> menacé</span>
+        <span><span className="inline-block h-2 w-2 rounded-[1px] bg-stone-500/70 align-middle" /> mur</span>
+        <span><span className="inline-block h-2 w-2 rounded-[1px] bg-green-800/60 align-middle" /> forêt</span>
+        <span><span className="inline-block h-2 w-2 rounded-[1px] bg-blue-700/60 align-middle" /> eau</span>
       </div>
       <p className="mt-0.5 text-center text-[9px] text-warm-mute/70">
-        Sans terrain (murs/forêts) ni déplacements spéciaux : repère visuel, pas une garantie.
+        Murs auto depuis le wiki ; peins forêt/eau à la main. Sans IA ni déplacements spéciaux : repère visuel, pas une garantie.
       </p>
     </div>
   );
