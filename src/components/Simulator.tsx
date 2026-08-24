@@ -434,7 +434,8 @@ export function Simulator({
       worker.postMessage({
         kind: 'solve',
         board,
-        opts: { maxTurns: solveTurns, nodeBudget: 3_000_000, timeLimitMs: 12_000, allowDeaths: solveDeaths },
+        // Plus de tours = recherche plus profonde → on laisse plus de temps/budget.
+        opts: { maxTurns: solveTurns, nodeBudget: 8_000_000, timeLimitMs: solveTurns >= 6 ? 30_000 : 15_000, allowDeaths: solveDeaths },
       });
     } catch {
       setSolveRes({ win: false, turns: [], nodes: 0, reason: 'Erreur pendant la préparation du calcul.' });
@@ -741,7 +742,7 @@ export function Simulator({
                               onChange={(e) => setSolveTurns(+e.target.value)}
                               className="rounded border border-white/10 bg-black/40 px-1 py-0.5 text-warm-text"
                             >
-                              {[1, 2, 3, 4].map((n) => <option key={n} value={n}>{n}</option>)}
+                              {[1, 2, 3, 4, 5, 6, 8, 10].map((n) => <option key={n} value={n}>{n}</option>)}
                             </select>
                           </label>
                           <label className="flex items-center gap-1 text-[10.5px] text-warm-mute">
@@ -784,7 +785,7 @@ export function Simulator({
                           </div>
                         ) : (
                           <p className="mt-1.5 text-[10px] text-warm-mute/70">
-                            Cherche une suite de placements/attaques qui nettoie la carte (départ sur tes cases, IA ennemie simulée). Calcul en tâche de fond (~12 s max) : « pas trouvé » = aucune ligne dans la limite, pas forcément impossible.
+                            Cherche une suite de placements/attaques qui nettoie la carte (départ sur tes cases, IA ennemie simulée). Calcul en tâche de fond (jusqu'à ~30 s selon les tours) : « pas trouvé » = aucune ligne dans la limite, pas forcément impossible. Plus de tours = recherche plus longue.
                           </p>
                         )}
                       </div>
