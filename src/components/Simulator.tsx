@@ -21,6 +21,7 @@ import {
   type Terrain, type TerrainMap,
 } from '../lib/tactics';
 import { MAP_TERRAIN } from '../data/mapTerrain';
+import { fetchBuilds } from '../lib/builds';
 
 // Persistance légère (équipe + carte ennemie) entre les ouvertures / rechargements.
 const load = <T,>(key: string, fallback: T): T => {
@@ -467,12 +468,17 @@ export function Simulator({
         const surv = (bossMagic ? s.res : s.def) + s.hp - boss.atk;
         return dmg * 2 + Math.max(0, surv);
       };
-      const ranked = roster
+      // Qui a un build enregistré ? (1 requête légère) → toujours inclus dans les candidats.
+      const builds = await fetchBuilds(roster.map((h) => h.id), userId);
+      const scored = roster
         .map((h) => ({ h, s: resolveStats(h, stats.get(h.id)) }))
         .filter((x): x is { h: Hero; s: St } => x.s !== null)
-        .map((x) => ({ ...x, sc: prefScore(x.h, x.s) }))
-        .sort((a, b) => b.sc - a.sc)
-        .slice(0, 18);
+        .map((x) => ({ ...x, sc: prefScore(x.h, x.s), built: builds.has(x.h.id) }))
+        .sort((a, b) => b.sc - a.sc);
+      // Tous les persos buildés (kit complet) + les meilleurs non-buildés, plafonné.
+      const built = scored.filter((x) => x.built);
+      const unbuilt = scored.filter((x) => !x.built);
+      const ranked = [...built, ...unbuilt].slice(0, 24);
 
       const wmap = await fetchTeamWeapons(ranked.map((x) => x.h.id), userId);
       const pool: SearchUnit[] = ranked.map(({ h, s }) => {
