@@ -370,6 +370,8 @@ export function Simulator({
   const [solveDeaths, setSolveDeaths] = useState(false);
   const [solveNodes, setSolveNodes] = useState(0);
   const workerRef = useRef<Worker | null>(null);
+  const solveStart = useRef(0); // horodatage de départ (jauge de temps)
+  const solveLimit = useRef(15_000); // limite de temps utilisée
   useEffect(() => () => workerRef.current?.terminate(), []); // nettoyage à la fermeture
 
   const runSolver = async () => {
@@ -431,11 +433,14 @@ export function Simulator({
           if (workerRef.current === worker) workerRef.current = null;
         }
       };
+      const timeLimitMs = solveTurns >= 6 ? 30_000 : 15_000;
+      solveStart.current = Date.now();
+      solveLimit.current = timeLimitMs;
       worker.postMessage({
         kind: 'solve',
         board,
         // Plus de tours = recherche plus profonde → on laisse plus de temps/budget.
-        opts: { maxTurns: solveTurns, nodeBudget: 8_000_000, timeLimitMs: solveTurns >= 6 ? 30_000 : 15_000, allowDeaths: solveDeaths },
+        opts: { maxTurns: solveTurns, nodeBudget: 8_000_000, timeLimitMs, allowDeaths: solveDeaths },
       });
     } catch {
       setSolveRes({ win: false, turns: [], nodes: 0, reason: 'Erreur pendant la préparation du calcul.' });
@@ -750,6 +755,9 @@ export function Simulator({
                             autoriser les pertes
                           </label>
                         </div>
+                        {solving ? (
+                          <ProgressBar color="bg-fuchsia-400/80" pct={((Date.now() - solveStart.current) / solveLimit.current) * 100} />
+                        ) : null}
                         {solveRes ? (
                           <div className="mt-2 text-[11.5px]">
                             {solveRes.win ? (
@@ -818,6 +826,13 @@ export function Simulator({
                             </button>
                           ) : null}
                         </div>
+                        {searching ? (
+                          <ProgressBar
+                            color="bg-cyan-400/80"
+                            indeterminate={!searchProg.total}
+                            pct={searchProg.total ? (searchProg.tested / searchProg.total) * 100 : 0}
+                          />
+                        ) : null}
                         {searchRes ? (
                           searchRes.teams.length ? (
                             <div className="mt-2 text-[11.5px]">
@@ -1389,6 +1404,19 @@ function Line({
         <div className={`h-full rounded-full ${hpAfter <= 0 ? 'bg-red-500/80' : 'bg-emerald-500/70'}`} style={{ width: `${pct}%` }} />
       </div>
       <div className="mt-0.5 text-right text-[10.5px] text-warm-mute">PV : {hpAfter} / {targetHp}</div>
+    </div>
+  );
+}
+
+// Jauge de progression. `pct` = 0..100 ; `indeterminate` = animation sans valeur.
+function ProgressBar({ pct, indeterminate, color }: { pct?: number; indeterminate?: boolean; color: string }) {
+  return (
+    <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-black/40">
+      {indeterminate ? (
+        <div className={`h-full w-1/3 animate-pulse rounded-full ${color}`} />
+      ) : (
+        <div className={`h-full rounded-full ${color} transition-[width] duration-200`} style={{ width: `${Math.min(100, Math.max(2, pct ?? 0))}%` }} />
+      )}
     </div>
   );
 }
