@@ -22,6 +22,7 @@ import {
 } from '../lib/tactics';
 import { MAP_TERRAIN } from '../data/mapTerrain';
 import { fetchBuilds } from '../lib/builds';
+import { fetchAllHeroStats } from '../lib/heroStats';
 
 // Persistance légère (équipe + carte ennemie) entre les ouvertures / rechargements.
 const load = <T,>(key: string, fallback: T): T => {
@@ -460,10 +461,12 @@ export function Simulator({
   const [searchRes, setSearchRes] = useState<SearchResult | null>(null);
   const [searchProg, setSearchProg] = useState({ tested: 0, total: 0 });
   const [builtIds, setBuiltIds] = useState<Set<string>>(new Set()); // persos au build enregistré
+  const [searchScope, setSearchScope] = useState<'roster' | 'game'>('roster'); // collection vs tout le jeu
 
   const runTeamSearch = async () => {
     if (!wikiMap) return;
     setSearching(true);
+    setSearchScope('roster');
     setSearchRes(null);
     setSearchProg({ tested: 0, total: 0 });
     try {
@@ -542,6 +545,80 @@ export function Simulator({
       });
     } catch {
       setSearchRes({ teams: [], tested: 0, poolSize: 0, reason: 'Erreur pendant la préparation de la recherche.' });
+      setSearching(false);
+    }
+  };
+
+  // ===== Théorycraft : quelle équipe DU JEU (tous les héros) nettoierait la carte ?
+  const runTheoryCraft = async () => {
+    if (!wikiMap) return;
+    setSearching(true);
+    setSearchScope('game');
+    setSearchRes(null);
+    setSearchProg({ tested: 0, total: 0 });
+    setBuiltIds(new Set());
+    try {
+      const foes = wikiMap.difficulties[wikiDiff] ?? [];
+      const boss = foes.reduce((a, b) => (b.hp > a.hp ? b : a), foes[0]);
+      const MAGIC = /Tome|Staff|Dragon/;
+      const bossMagic = boss ? MAGIC.test(resolveEnemy(boss, heroByName).weaponType) : false;
+      type St = { atk: number; spd: number; def: number; res: number; hp: number };
+      const prefScore = (h: Hero, s: St): number => {
+        if (!boss) return s.atk + s.spd + s.def + s.res;
+        const mit = MAGIC.test(h.weaponType) ? boss.res : boss.def;
+        const dmg = Math.max(0, s.atk - mit);
+        const surv = (bossMagic ? s.res : s.def) + s.hp - boss.atk;
+        return dmg * 2 + Math.max(0, surv);
+      };
+      const statsMap = await fetchAllHeroStats();
+      const ranked = heroes
+        .map((h) => ({ h, s: statsMap.get(h.id) }))
+        .filter((x): x is { h: Hero; s: St } => !!x.s)
+        .map((x) => ({ ...x, sc: prefScore(x.h, x.s) }))
+        .sort((a, b) => b.sc - a.sc)
+        .slice(0, 20);
+      const wmap = await fetchTeamWeapons(ranked.map((x) => x.h.id), null); // héros non possédés → meilleure arme
+      const pool: SearchUnit[] = ranked.map(({ h, s }) => {
+        const wi = wmap.get(h.id) ?? NO_WI;
+        const hero = { id: h.id, name: h.name, title: h.title, color: h.color, weaponType: h.weaponType, moveType: h.moveType, rarity: 5, origin: '' } as Hero;
+        return { id: h.id, name: h.name, title: h.title, unit: { hero, stats: s, mods: toMods(wi.effects, wi.effAgainst) } };
+      });
+
+      const passive = /passive/i.test(wikiMap.globalai || '');
+      const linked = /linked/i.test(wikiMap.globalai || '');
+      const edits = load<TerrainMap>('feh.sim.terrain.' + wikiMap.title, {});
+      const terrain = { ...(MAP_TERRAIN[wikiMap.title] ?? {}), ...wikiMap.terrain, ...edits };
+      const emods = await Promise.all(foes.map((e) => fetchEnemyCombat(e.skills)));
+      const enemyUnits: BattleUnit[] = foes.map((e, i) => {
+        const r = resolveEnemy(e, heroByName);
+        return {
+          id: 'E' + i, side: 'enemy',
+          unit: {
+            hero: { id: 'E' + i, name: e.name, title: '', color: r.color, weaponType: r.weaponType, moveType: r.moveType, rarity: 5, origin: '' } as Hero,
+            stats: { hp: e.hp, atk: e.atk, spd: e.spd, def: e.def, res: e.res }, mods: toMods(emods[i], []),
+          },
+          pos: e.pos.toLowerCase(), hp: e.hp, active: !passive, refresher: isRefresher(e.skills),
+        };
+      });
+      workerRef.current?.terminate();
+      const worker = new Worker(new URL('../lib/solverWorker.ts', import.meta.url), { type: 'module' });
+      workerRef.current = worker;
+      worker.onmessage = (ev: MessageEvent<SolverResponse>) => {
+        const msg = ev.data;
+        if (msg.type === 'searchProgress') setSearchProg({ tested: msg.tested, total: msg.total });
+        else if (msg.type === 'searchDone') {
+          setSearchRes(msg.result);
+          setSearching(false);
+          worker.terminate();
+          if (workerRef.current === worker) workerRef.current = null;
+        }
+      };
+      worker.postMessage({
+        kind: 'search', pool, enemies: enemyUnits, terrain, allyPos: wikiMap.allyPos, linked,
+        opts: { maxTurns: solveTurns, topK: 6, perTeamBudget: 400_000, perTeamMs: 2500 },
+      });
+    } catch {
+      setSearchRes({ teams: [], tested: 0, poolSize: 0, reason: 'Erreur pendant la préparation du théorycraft.' });
       setSearching(false);
     }
   };
@@ -822,9 +899,20 @@ export function Simulator({
                             onClick={runTeamSearch}
                             className="rounded-lg border border-cyan-300/40 bg-cyan-500/20 px-3 py-1.5 font-feh text-[12px] font-semibold text-cyan-100 transition hover:bg-cyan-500/30 disabled:opacity-60"
                           >
-                            {searching
+                            {searching && searchScope === 'roster'
                               ? `⏳ équipe ${searchProg.tested}/${searchProg.total || '…'}…`
-                              : '🔎 Trouver une équipe qui gagne'}
+                              : '🔎 Dans ta collection'}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={searching}
+                            onClick={runTheoryCraft}
+                            title="Cherche parmi TOUS les héros du jeu (stats du wiki) une équipe qui nettoie la carte"
+                            className="rounded-lg border border-violet-300/40 bg-violet-500/20 px-3 py-1.5 font-feh text-[12px] font-semibold text-violet-100 transition hover:bg-violet-500/30 disabled:opacity-60"
+                          >
+                            {searching && searchScope === 'game'
+                              ? `⏳ équipe ${searchProg.tested}/${searchProg.total || '…'}…`
+                              : '🔮 Théorycraft (tout le jeu)'}
                           </button>
                           {searching ? (
                             <button
@@ -852,7 +940,7 @@ export function Simulator({
                           searchRes.teams.length ? (
                             <div className="mt-2 text-[11.5px]">
                               <p className="font-feh font-semibold text-emerald-300">
-                                ✅ {searchRes.teams.length} équipe(s) qui nettoie(nt) la carte :
+                                ✅ {searchRes.teams.length} équipe(s) qui nettoie(nt) la carte{searchScope === 'game' ? ' (héros du jeu)' : ''} :
                               </p>
                               <ul className="mt-1 space-y-1">
                                 {searchRes.teams.map((t, i) => (
@@ -871,20 +959,24 @@ export function Simulator({
                                       ))}
                                     </span>
                                     <span className="text-[10px] text-warm-mute">({t.turns} tour{t.turns > 1 ? 's' : ''})</span>
-                                    <button
-                                      type="button"
-                                      onClick={() => setTeam(t.ids)}
-                                      className="ml-auto rounded border border-emerald-300/40 bg-emerald-500/15 px-2 py-0.5 text-[10.5px] text-emerald-200 hover:bg-emerald-500/25"
-                                    >
-                                      charger cette équipe
-                                    </button>
+                                    {searchScope === 'roster' ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => setTeam(t.ids)}
+                                        className="ml-auto rounded border border-emerald-300/40 bg-emerald-500/15 px-2 py-0.5 text-[10.5px] text-emerald-200 hover:bg-emerald-500/25"
+                                      >
+                                        charger cette équipe
+                                      </button>
+                                    ) : null}
                                   </li>
                                 ))}
                               </ul>
                               <p className="mt-1 text-[9.5px] text-warm-mute/70">
-                                {searchRes.tested} équipe(s) testée(s) sur {searchRes.poolSize} persos jouables.
-                                <span className="text-emerald-300/70"> build</span> = kit exact ·
-                                <span className="text-warm-mute"> arme</span> = estimation. Plans valables si l'IA joue standard.
+                                {searchRes.tested} équipe(s) testée(s) sur {searchRes.poolSize} candidats.
+                                {searchScope === 'game'
+                                  ? ' Héros du jeu (5★ neutre, meilleure arme) — indication de qui viser, à obtenir/monter.'
+                                  : <> <span className="text-emerald-300/70">build</span> = kit exact · <span className="text-warm-mute">arme</span> = estimation.</>}
+                                {' '}Plans valables si l'IA joue standard.
                               </p>
                             </div>
                           ) : (
@@ -892,7 +984,7 @@ export function Simulator({
                           )
                         ) : (
                           <p className="mt-1.5 text-[10px] text-warm-mute/70">
-                            Teste les combinaisons les plus prometteuses de tes persos jouables (stats saisies) et te propose celles qui battent la carte.
+                            <strong>Dans ta collection</strong> : équipe gagnante parmi tes persos jouables (stats saisies). <strong>Théorycraft</strong> : parmi TOUS les héros du jeu (stats du wiki, 5★ neutre) — pour savoir qui viser/monter si ta collection ne passe pas.
                           </p>
                         )}
                       </div>
