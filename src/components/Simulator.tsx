@@ -446,6 +446,7 @@ export function Simulator({
   const [searching, setSearching] = useState(false);
   const [searchRes, setSearchRes] = useState<SearchResult | null>(null);
   const [searchProg, setSearchProg] = useState({ tested: 0, total: 0 });
+  const [builtIds, setBuiltIds] = useState<Set<string>>(new Set()); // persos au build enregistré
 
   const runTeamSearch = async () => {
     if (!wikiMap) return;
@@ -479,6 +480,7 @@ export function Simulator({
       const built = scored.filter((x) => x.built);
       const unbuilt = scored.filter((x) => !x.built);
       const ranked = [...built, ...unbuilt].slice(0, 24);
+      setBuiltIds(new Set(built.map((x) => x.h.id)));
 
       const wmap = await fetchTeamWeapons(ranked.map((x) => x.h.id), userId);
       const pool: SearchUnit[] = ranked.map(({ h, s }) => {
@@ -823,8 +825,20 @@ export function Simulator({
                               </p>
                               <ul className="mt-1 space-y-1">
                                 {searchRes.teams.map((t, i) => (
-                                  <li key={i} className="flex flex-wrap items-center gap-2 rounded bg-black/25 px-2 py-1">
-                                    <span className="text-warm-dim">{t.names.join(', ')}</span>
+                                  <li key={i} className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded bg-black/25 px-2 py-1">
+                                    <span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-warm-dim">
+                                      {t.names.map((n, j) => (
+                                        <span key={j} className="inline-flex items-center gap-0.5">
+                                          {n}
+                                          {builtIds.has(t.ids[j]) ? (
+                                            <span title="Build enregistré (kit exact)" className="rounded bg-emerald-500/25 px-1 text-[8.5px] font-semibold text-emerald-200">build</span>
+                                          ) : (
+                                            <span title="Estimation depuis l'arme seule" className="rounded bg-white/10 px-1 text-[8.5px] text-warm-mute">arme</span>
+                                          )}
+                                          {j < t.names.length - 1 ? <span className="text-warm-mute/50">·</span> : null}
+                                        </span>
+                                      ))}
+                                    </span>
                                     <span className="text-[10px] text-warm-mute">({t.turns} tour{t.turns > 1 ? 's' : ''})</span>
                                     <button
                                       type="button"
@@ -837,7 +851,9 @@ export function Simulator({
                                 ))}
                               </ul>
                               <p className="mt-1 text-[9.5px] text-warm-mute/70">
-                                {searchRes.tested} équipe(s) testée(s) sur {searchRes.poolSize} persos jouables. Plans valables si l'IA joue standard.
+                                {searchRes.tested} équipe(s) testée(s) sur {searchRes.poolSize} persos jouables.
+                                <span className="text-emerald-300/70"> build</span> = kit exact ·
+                                <span className="text-warm-mute"> arme</span> = estimation. Plans valables si l'IA joue standard.
                               </p>
                             </div>
                           ) : (
