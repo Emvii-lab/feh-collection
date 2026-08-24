@@ -8,6 +8,7 @@ import {
 import { type SolveResult } from '../lib/solver';
 import type { SolverResponse } from '../lib/solverWorker';
 import type { Board, BattleUnit } from '../lib/battle';
+import type { SearchResult, SearchUnit } from '../lib/teamSearch';
 import { fetchTeamWeapons, fetchEnemyCombat, EMPTY_EFFECTS, type WeaponInfo, type EnemyCombat } from '../lib/simWeapons';
 import type { SpecialInfo } from '../lib/skillEffects';
 import {
@@ -415,7 +416,7 @@ export function Simulator({
       worker.onmessage = (ev: MessageEvent<SolverResponse>) => {
         const msg = ev.data;
         if (msg.type === 'progress') setSolveNodes(msg.nodes);
-        else {
+        else if (msg.type === 'done') {
           setSolveRes(msg.result);
           setSolveNodes(msg.result.nodes);
           setSolving(false);
@@ -424,12 +425,81 @@ export function Simulator({
         }
       };
       worker.postMessage({
+        kind: 'solve',
         board,
         opts: { maxTurns: solveTurns, nodeBudget: 3_000_000, timeLimitMs: 12_000, allowDeaths: solveDeaths },
       });
     } catch {
       setSolveRes({ win: false, turns: [], nodes: 0, reason: 'Erreur pendant la préparation du calcul.' });
       setSolving(false);
+    }
+  };
+
+  // ===== Recherche d'équipe : quelle équipe de ta collection nettoie la carte ?
+  const [searching, setSearching] = useState(false);
+  const [searchRes, setSearchRes] = useState<SearchResult | null>(null);
+  const [searchProg, setSearchProg] = useState({ tested: 0, total: 0 });
+
+  const runTeamSearch = async () => {
+    if (!wikiMap) return;
+    setSearching(true);
+    setSearchRes(null);
+    setSearchProg({ tested: 0, total: 0 });
+    try {
+      const rosterIds = roster.map((h) => h.id);
+      const wmap = await fetchTeamWeapons(rosterIds, userId);
+      const pool: SearchUnit[] = roster
+        .map((h): SearchUnit | null => {
+          const s = resolveStats(h, stats.get(h.id));
+          if (!s) return null;
+          const wi = wmap.get(h.id) ?? NO_WI;
+          const hero = { id: h.id, name: h.name, title: h.title, color: h.color, weaponType: h.weaponType, moveType: h.moveType, rarity: 5, origin: '' } as Hero;
+          return { id: h.id, name: h.name, title: h.title, unit: { hero, stats: s, mods: toMods(wi.effects, wi.effAgainst) } };
+        })
+        .filter((x): x is SearchUnit => x !== null);
+
+      const foes = wikiMap.difficulties[wikiDiff] ?? [];
+      const passive = /passive/i.test(wikiMap.globalai);
+      const linked = /linked/i.test(wikiMap.globalai);
+      const edits = load<TerrainMap>('feh.sim.terrain.' + wikiMap.title, {});
+      const terrain = { ...(MAP_TERRAIN[wikiMap.title] ?? {}), ...wikiMap.terrain, ...edits };
+      const emods = await Promise.all(foes.map((e) => fetchEnemyCombat(e.skills)));
+      const enemyUnits: BattleUnit[] = foes.map((e, i) => {
+        const r = resolveEnemy(e, heroByName);
+        return {
+          id: 'E' + i, side: 'enemy',
+          unit: {
+            hero: { id: 'E' + i, name: e.name, title: '', color: r.color, weaponType: r.weaponType, moveType: r.moveType, rarity: 5, origin: '' } as Hero,
+            stats: { hp: e.hp, atk: e.atk, spd: e.spd, def: e.def, res: e.res }, mods: toMods(emods[i], []),
+          },
+          pos: e.pos.toLowerCase(), hp: e.hp, active: !passive,
+        };
+      });
+      if (pool.length < Math.min(4, wikiMap.allyPos.length || 4)) {
+        setSearchRes({ teams: [], tested: 0, poolSize: pool.length, reason: 'Pas assez de persos jouables (renseigne leurs stats dans l\'onglet Stats).' });
+        setSearching(false);
+        return;
+      }
+      workerRef.current?.terminate();
+      const worker = new Worker(new URL('../lib/solverWorker.ts', import.meta.url), { type: 'module' });
+      workerRef.current = worker;
+      worker.onmessage = (ev: MessageEvent<SolverResponse>) => {
+        const msg = ev.data;
+        if (msg.type === 'searchProgress') setSearchProg({ tested: msg.tested, total: msg.total });
+        else if (msg.type === 'searchDone') {
+          setSearchRes(msg.result);
+          setSearching(false);
+          worker.terminate();
+          if (workerRef.current === worker) workerRef.current = null;
+        }
+      };
+      worker.postMessage({
+        kind: 'search', pool, enemies: enemyUnits, terrain, allyPos: wikiMap.allyPos, linked,
+        opts: { maxTurns: solveTurns, topK: 6, perTeamBudget: 400_000, perTeamMs: 2500 },
+      });
+    } catch {
+      setSearchRes({ teams: [], tested: 0, poolSize: 0, reason: 'Erreur pendant la préparation de la recherche.' });
+      setSearching(false);
     }
   };
 
@@ -685,6 +755,69 @@ export function Simulator({
                         ) : (
                           <p className="mt-1.5 text-[10px] text-warm-mute/70">
                             Cherche une suite de placements/attaques qui nettoie la carte (départ sur tes cases, IA ennemie simulée). Calcul en tâche de fond (~12 s max) : « pas trouvé » = aucune ligne dans la limite, pas forcément impossible.
+                          </p>
+                        )}
+                      </div>
+
+                      {/* ===== Recherche d'équipe ===== */}
+                      <div className="mt-2 rounded-lg border border-cyan-400/30 bg-cyan-500/[0.06] p-2.5">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            disabled={searching}
+                            onClick={runTeamSearch}
+                            className="rounded-lg border border-cyan-300/40 bg-cyan-500/20 px-3 py-1.5 font-feh text-[12px] font-semibold text-cyan-100 transition hover:bg-cyan-500/30 disabled:opacity-60"
+                          >
+                            {searching
+                              ? `⏳ équipe ${searchProg.tested}/${searchProg.total || '…'}…`
+                              : '🔎 Trouver une équipe qui gagne'}
+                          </button>
+                          {searching ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                workerRef.current?.terminate();
+                                workerRef.current = null;
+                                setSearching(false);
+                                setSearchRes({ teams: [], tested: searchProg.tested, poolSize: 0, reason: 'Recherche arrêtée.' });
+                              }}
+                              className="rounded-lg border border-red-300/40 bg-red-500/15 px-2.5 py-1.5 font-feh text-[12px] text-red-200 transition hover:bg-red-500/25"
+                            >
+                              ✕ Stop
+                            </button>
+                          ) : null}
+                        </div>
+                        {searchRes ? (
+                          searchRes.teams.length ? (
+                            <div className="mt-2 text-[11.5px]">
+                              <p className="font-feh font-semibold text-emerald-300">
+                                ✅ {searchRes.teams.length} équipe(s) qui nettoie(nt) la carte :
+                              </p>
+                              <ul className="mt-1 space-y-1">
+                                {searchRes.teams.map((t, i) => (
+                                  <li key={i} className="flex flex-wrap items-center gap-2 rounded bg-black/25 px-2 py-1">
+                                    <span className="text-warm-dim">{t.names.join(', ')}</span>
+                                    <span className="text-[10px] text-warm-mute">({t.turns} tour{t.turns > 1 ? 's' : ''})</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => setTeam(t.ids)}
+                                      className="ml-auto rounded border border-emerald-300/40 bg-emerald-500/15 px-2 py-0.5 text-[10.5px] text-emerald-200 hover:bg-emerald-500/25"
+                                    >
+                                      charger cette équipe
+                                    </button>
+                                  </li>
+                                ))}
+                              </ul>
+                              <p className="mt-1 text-[9.5px] text-warm-mute/70">
+                                {searchRes.tested} équipe(s) testée(s) sur {searchRes.poolSize} persos jouables. Plans valables si l'IA joue standard.
+                              </p>
+                            </div>
+                          ) : (
+                            <p className="mt-2 text-[11.5px] text-amber-300/90">❓ {searchRes.reason}</p>
+                          )
+                        ) : (
+                          <p className="mt-1.5 text-[10px] text-warm-mute/70">
+                            Teste les combinaisons les plus prometteuses de tes persos jouables (stats saisies) et te propose celles qui battent la carte.
                           </p>
                         )}
                       </div>
