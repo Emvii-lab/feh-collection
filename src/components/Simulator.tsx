@@ -13,7 +13,7 @@ import type { SearchResult, SearchUnit } from '../lib/teamSearch';
 import { fetchTeamWeapons, fetchEnemyCombat, EMPTY_EFFECTS, type WeaponInfo, type EnemyCombat } from '../lib/simWeapons';
 import type { SpecialInfo } from '../lib/skillEffects';
 import {
-  fetchWikiMap, parsePageTitle, resolveEnemy,
+  fetchWikiMap, parsePageTitle, resolveEnemy, resolveMapImage,
   type WikiEnemy, type WikiMap,
 } from '../lib/wikiMap';
 import {
@@ -1000,7 +1000,16 @@ function MapGrid({
   mapImageUrl?: string;
 }) {
   const [showImage, setShowImage] = useState(true);
-  const bg = Boolean(mapImageUrl) && showImage; // image de fond active
+  // Auto-réparation : si l'URL de l'image manque (carte en cache), on la résout du titre.
+  const [imgUrl, setImgUrl] = useState<string | undefined>(mapImageUrl);
+  useEffect(() => { setImgUrl(mapImageUrl); }, [mapImageUrl]);
+  useEffect(() => {
+    if (imgUrl || !mapKey) return;
+    let active = true;
+    resolveMapImage(mapKey).then((u) => { if (active && u) setImgUrl(u); });
+    return () => { active = false; };
+  }, [imgUrl, mapKey]);
+  const bg = Boolean(imgUrl) && showImage; // image de fond active
   const enemyAt = new Map(enemies.map((e) => [e.pos.toLowerCase(), e]));
   const allyOrder = allyPos.map((p) => p.toLowerCase()); // ordonné : 1re case → 1er perso
   const cols = ['a', 'b', 'c', 'd', 'e', 'f'];
@@ -1111,7 +1120,7 @@ function MapGrid({
           Clique une case pour la peindre en « {BRUSHES.find((b) => b.t === brush)?.label} ».
         </p>
       ) : null}
-      {mapImageUrl ? (
+      {imgUrl ? (
         <label className="mb-1 flex items-center justify-center gap-1 text-[9.5px] text-warm-mute">
           <input type="checkbox" checked={showImage} onChange={(e) => setShowImage(e.target.checked)} className="h-3 w-3 accent-gold" />
           image de la carte en fond
@@ -1119,7 +1128,7 @@ function MapGrid({
       ) : null}
       <div className="relative">
         {bg ? (
-          <img src={mapImageUrl} alt="" className="pointer-events-none absolute inset-0 h-full w-full rounded-[4px] object-cover opacity-90" />
+          <img src={imgUrl} alt="" className="pointer-events-none absolute inset-0 h-full w-full rounded-[4px] object-cover opacity-90" />
         ) : null}
         <div className="relative grid gap-[2px]" style={{ gridTemplateColumns: 'repeat(6, 1fr)' }}>
         {rows.flatMap((r) =>

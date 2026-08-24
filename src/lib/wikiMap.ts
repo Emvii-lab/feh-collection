@@ -100,25 +100,41 @@ export async function fetchWikiMap(pageTitle: string): Promise<WikiMap> {
   const globalai = aiM ? aiM[1].trim() : '';
   const bmM = wt.match(/baseMap\s*=\s*(\w+)/i);
   const baseMap = bmM ? bmM[1] : '';
-
-  // Résout l'URL de l'image de fond de la carte (File:Map_T####.webp) via le wiki.
-  let mapImageUrl: string | undefined;
-  if (baseMap) {
-    try {
-      const iu =
-        'https://feheroes.fandom.com/api.php?action=query&prop=imageinfo&iiprop=url&format=json&origin=*&titles=' +
-        encodeURIComponent('File:Map_' + baseMap + '.webp');
-      const ir = await fetch(iu);
-      const ij = await ir.json();
-      const pages = ij?.query?.pages ?? {};
-      const first = pages[Object.keys(pages)[0]];
-      mapImageUrl = first?.imageinfo?.[0]?.url;
-    } catch {
-      /* image de fond optionnelle : on ignore l'échec */
-    }
-  }
+  const mapImageUrl = await imageUrlForBaseMap(baseMap);
 
   return { title: pageTitle, difficulties, allyPos, terrain, globalai, baseMap, mapImageUrl };
+}
+
+// URL de l'image de fond (File:Map_T####.webp) via l'API du wiki.
+export async function imageUrlForBaseMap(baseMap: string): Promise<string | undefined> {
+  if (!baseMap) return undefined;
+  try {
+    const iu =
+      'https://feheroes.fandom.com/api.php?action=query&prop=imageinfo&iiprop=url&format=json&origin=*&titles=' +
+      encodeURIComponent('File:Map_' + baseMap + '.webp');
+    const ij = await (await fetch(iu)).json();
+    const pages = ij?.query?.pages ?? {};
+    return pages[Object.keys(pages)[0]]?.imageinfo?.[0]?.url;
+  } catch {
+    return undefined; // image de fond optionnelle
+  }
+}
+
+// Auto-réparation : résout l'image depuis le TITRE (pour les cartes en cache sans URL).
+const _imgCache = new Map<string, string | undefined>();
+export async function resolveMapImage(pageTitle: string): Promise<string | undefined> {
+  if (_imgCache.has(pageTitle)) return _imgCache.get(pageTitle);
+  let url: string | undefined;
+  try {
+    const url0 =
+      'https://feheroes.fandom.com/api.php?action=parse&prop=wikitext&format=json&origin=*&page=' +
+      encodeURIComponent(pageTitle);
+    const wt: string = (await (await fetch(url0)).json())?.parse?.wikitext?.['*'] ?? '';
+    const bm = wt.match(/baseMap\s*=\s*(\w+)/i);
+    if (bm) url = await imageUrlForBaseMap(bm[1]);
+  } catch { /* réseau : on abandonne silencieusement */ }
+  _imgCache.set(pageTitle, url);
+  return url;
 }
 
 // Déduit couleur / type d'arme / déplacement : d'abord via tes héros (nom exact),
