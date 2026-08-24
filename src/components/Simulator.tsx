@@ -3,8 +3,10 @@ import type { Color, Hero, WeaponType } from '../types';
 import type { CollStats } from '../lib/collection';
 import {
   resolveStats, combatVerdict,
-  NO_MODS, type Sim, type Unit, type Verdict,
+  NO_MODS, type Sim, type Unit, type Verdict, type CombatMods,
 } from '../lib/combat';
+import { solve, type SolveResult } from '../lib/solver';
+import type { Board, BattleUnit } from '../lib/battle';
 import { fetchTeamWeapons, fetchEnemyCombat, EMPTY_EFFECTS, type WeaponInfo, type EnemyCombat } from '../lib/simWeapons';
 import type { SpecialInfo } from '../lib/skillEffects';
 import {
@@ -65,6 +67,19 @@ const pickEffects = (c: EnemyCombat) => ({
   special: c.special,
 });
 const ZERO_EFFECTS = pickEffects(EMPTY_EFFECTS());
+
+// Effets parsés → modificateurs de combat (pour construire le plateau du solveur).
+function toMods(e: EnemyCombat, effAgainst: string[]): CombatMods {
+  return {
+    ...NO_MODS, brave: e.brave, effAgainst,
+    atkBuff: e.atkBuff, spdBuff: e.spdBuff, defBuff: e.defBuff, resBuff: e.resBuff,
+    bonusDamage: e.bonusDamage, bonusDamageStat: e.bonusDamageStat,
+    guaranteedFollowup: e.guaranteedFollowup, cannotBeDoubled: e.cannotBeDoubled, noFollowup: e.noFollowup,
+    counterAnyRange: e.counterAnyRange, preventFoeCounter: e.preventFoeCounter,
+    neutralizeFoeBonuses: e.neutralizeFoeBonuses, pierceFoeReduction: e.pierceFoeReduction,
+    dmgReductionPct: e.dmgReductionPct, flatDmgReduction: e.flatDmgReduction, special: e.special,
+  };
+}
 
 type EnemyState = {
   color: Color; weapon: WeaponType; move: string;
@@ -339,6 +354,62 @@ export function Simulator({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [team, enemyUnit, weaponInfo, unitMods, stats]);
 
+  // ===== Solveur de carte (C4) : construit le plateau et cherche une ligne gagnante.
+  const [solving, setSolving] = useState(false);
+  const [solveRes, setSolveRes] = useState<SolveResult | null>(null);
+  const [solveTurns, setSolveTurns] = useState(3);
+  const [solveDeaths, setSolveDeaths] = useState(false);
+
+  const runSolver = async () => {
+    if (!wikiMap) return;
+    setSolving(true);
+    setSolveRes(null);
+    try {
+      const foes = wikiMap.difficulties[wikiDiff] ?? [];
+      const passive = /passive/i.test(wikiMap.globalai);
+      const linked = /linked/i.test(wikiMap.globalai);
+      const edits = load<TerrainMap>('feh.sim.terrain.' + wikiMap.title, {});
+      const terrain = { ...(MAP_TERRAIN[wikiMap.title] ?? {}), ...wikiMap.terrain, ...edits };
+
+      const mods = await Promise.all(foes.map((e) => fetchEnemyCombat(e.skills)));
+      const enemyUnits: BattleUnit[] = foes.map((e, i) => {
+        const r = resolveEnemy(e, heroByName);
+        return {
+          id: 'E' + i, side: 'enemy',
+          unit: {
+            hero: { id: 'E' + i, name: e.name, title: '', color: r.color, weaponType: r.weaponType, moveType: r.moveType, rarity: 5, origin: '' } as Hero,
+            stats: { hp: e.hp, atk: e.atk, spd: e.spd, def: e.def, res: e.res },
+            mods: toMods(mods[i], []),
+          },
+          pos: e.pos.toLowerCase(), hp: e.hp, active: !passive,
+        };
+      });
+      const allyUnits: BattleUnit[] = [];
+      team.forEach((id, i) => {
+        if (i >= wikiMap.allyPos.length) return;
+        const h = byId.get(id);
+        const s = h && resolveStats(h, stats.get(id));
+        if (!h || !s) return;
+        const wi = weaponInfo.get(id) ?? NO_WI;
+        allyUnits.push({
+          id, side: 'ally',
+          unit: { hero: h, stats: s, mods: toMods(wi.effects, wi.effAgainst) },
+          pos: wikiMap.allyPos[i].toLowerCase(), hp: s.hp, active: true,
+        });
+      });
+      if (!allyUnits.length) {
+        setSolveRes({ win: false, turns: [], nodes: 0, reason: 'Ajoute des persos (avec stats saisies) puis relance.' });
+        return;
+      }
+      const board: Board = { units: [...enemyUnits, ...allyUnits], terrain, linked };
+      await new Promise((r) => setTimeout(r, 30)); // laisse l'UI afficher « Calcul… »
+      const res = solve(board, { maxTurns: solveTurns, nodeBudget: 20000, allowDeaths: solveDeaths });
+      setSolveRes(res);
+    } finally {
+      setSolving(false);
+    }
+  };
+
   const filtered = query
     ? roster.filter((h) =>
         (h.name + ' ' + h.title).toLowerCase().includes(query.toLowerCase()),
@@ -513,6 +584,72 @@ export function Simulator({
                         réduction, coupe-riposte, neutralisation, malus, et sa <strong>spéciale</strong> (jauge simulée).
                         Reste peu capté : effets conditionnels (PV, position). Ajuste au besoin via « Compétences ▾ ».
                       </p>
+
+                      {/* ===== Solveur de carte (C3/C4) ===== */}
+                      <div className="mt-3 rounded-lg border border-fuchsia-400/30 bg-fuchsia-500/[0.06] p-2.5">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            disabled={solving}
+                            onClick={runSolver}
+                            className="rounded-lg border border-fuchsia-300/40 bg-fuchsia-500/20 px-3 py-1.5 font-feh text-[12px] font-semibold text-fuchsia-100 transition hover:bg-fuchsia-500/30 disabled:opacity-60"
+                          >
+                            {solving ? '⏳ Calcul…' : '🧠 Résoudre la carte'}
+                          </button>
+                          <label className="flex items-center gap-1 text-[10.5px] text-warm-mute">
+                            tours
+                            <select
+                              value={solveTurns}
+                              onChange={(e) => setSolveTurns(+e.target.value)}
+                              className="rounded border border-white/10 bg-black/40 px-1 py-0.5 text-warm-text"
+                            >
+                              {[1, 2, 3, 4].map((n) => <option key={n} value={n}>{n}</option>)}
+                            </select>
+                          </label>
+                          <label className="flex items-center gap-1 text-[10.5px] text-warm-mute">
+                            <input type="checkbox" checked={solveDeaths} onChange={(e) => setSolveDeaths(e.target.checked)} className="h-3 w-3 accent-fuchsia-400" />
+                            autoriser les pertes
+                          </label>
+                        </div>
+                        {solveRes ? (
+                          <div className="mt-2 text-[11.5px]">
+                            {solveRes.win ? (
+                              <>
+                                <p className="font-feh font-semibold text-emerald-300">
+                                  ✅ Gagnable en {solveRes.turns.length} tour(s) — plan :
+                                </p>
+                                <ol className="mt-1 space-y-1">
+                                  {solveRes.turns.map((t, i) => (
+                                    <li key={i} className="rounded bg-black/25 px-2 py-1">
+                                      <span className="font-feh text-[10.5px] text-gold-text">Tour {i + 1}</span>
+                                      <ul className="mt-0.5 space-y-0.5 text-warm-dim">
+                                        {t.player.filter((m) => m.from !== m.to || m.targetId).map((m, j) => (
+                                          <li key={j}>
+                                            {m.name} {m.from}→{m.to}
+                                            {m.targetName ? ` ⚔ ${m.targetName} (${m.dmg}${m.kills ? ', K.O.' : ''})` : ''}
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    </li>
+                                  ))}
+                                </ol>
+                                <p className="mt-1 text-[9.5px] text-warm-mute/70">
+                                  {solveRes.nodes} états explorés. Plan valable si l'IA se comporte comme le modèle standard.
+                                </p>
+                              </>
+                            ) : (
+                              <p className="text-amber-300/90">
+                                ❓ {solveRes.reason}
+                                <span className="text-warm-mute/70"> ({solveRes.nodes} états explorés — augmente les tours, ou coche « autoriser les pertes ».)</span>
+                              </p>
+                            )}
+                          </div>
+                        ) : (
+                          <p className="mt-1.5 text-[10px] text-warm-mute/70">
+                            Cherche une suite de placements/attaques qui nettoie la carte (départ sur tes cases, phase ennemie simulée). Recherche rapide : peut dire « pas trouvé » sur les cartes dures.
+                          </p>
+                        )}
+                      </div>
                     </div>
                   ) : null}
                 </div>

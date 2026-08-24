@@ -3,9 +3,10 @@
 // (voir battle.ts). DFS avec élagage, table de transposition et budget de nœuds.
 import {
   enemyPhase, boardSummary, alive,
-  attackOptionsFor, applyPlayerAttack, hashBoard,
+  attackOptionsFor, applyPlayerAttack, applyMove, unitReach, hashBoard,
   type Board, type EnemyMove,
 } from './battle';
+import { manhattan } from './tactics';
 
 export type PlayerMove = {
   id: string; name: string; from: string; to: string;
@@ -36,8 +37,8 @@ export function solve(board: Board, opts: SolveOpts = {}): SolveResult {
       const atks = attackOptionsFor(b, id)
         .sort((x, y) => Number(y.kills) - Number(x.kills) || y.dmg - x.dmg)
         .slice(0, 8);
-      for (const a of atks) {
-        if (!allowDeaths && a.selfKilled) continue; // se suicide en attaquant
+      const usable = atks.filter((a) => allowDeaths || !a.selfKilled);
+      for (const a of usable) {
         const nb = applyPlayerAttack(b, id, a.tile, a.targetId);
         const tgt = b.units.find((u) => u.id === a.targetId)!;
         yield* rec(i + 1, nb, [...moves, {
@@ -45,6 +46,25 @@ export function solve(board: Board, opts: SolveOpts = {}): SolveResult {
           targetId: a.targetId, targetName: tgt.unit.hero.name, dmg: a.dmg, kills: a.kills,
         }]);
       }
+      // S'il ne peut pas attaquer utilement, proposer d'AVANCER vers l'ennemi le plus
+      // proche (une seule case, pour ne pas exploser la recherche).
+      if (usable.length === 0) {
+        const foes = b.units.filter((u) => u.side !== 'ally' && alive(u));
+        if (foes.length) {
+          const occ = new Set(b.units.filter((u) => u.id !== id && alive(u)).map((u) => u.pos));
+          let dest = cur.pos, bd = Infinity;
+          for (const t of unitReach(b, id)) {
+            if (t !== cur.pos && occ.has(t)) continue;
+            const d = Math.min(...foes.map((f) => manhattan(t, f.pos)));
+            if (d < bd) { bd = d; dest = t; }
+          }
+          if (dest !== cur.pos) {
+            const nb = applyMove(b, id, dest);
+            yield* rec(i + 1, nb, [...moves, { id, name: cur.unit.hero.name, from: cur.pos, to: dest }]);
+          }
+        }
+      }
+      // Option « attente » (rester sur place).
       yield* rec(i + 1, b, [...moves, { id, name: cur.unit.hero.name, from: cur.pos, to: cur.pos }]);
     }
     yield* rec(0, b0, []);

@@ -14,6 +14,7 @@ export type WikiMap = {
   difficulties: Record<string, WikiEnemy[]>;
   allyPos: string[]; // cases de départ des alliés
   terrain: Record<string, 'wall' | 'forest' | 'water' | 'trench'>; // murs lus du wiki (le reste = plaine)
+  globalai: string; // ex. "passivelinked" : passif = dormant, linked = réveil de groupe
 };
 
 export type ResolvedEnemy = WikiEnemy & {
@@ -93,7 +94,10 @@ export async function fetchWikiMap(pageTitle: string): Promise<WikiMap> {
     if (t) terrain[m[1].toLowerCase()] = t;
   }
 
-  return { title: pageTitle, difficulties, allyPos, terrain };
+  const aiM = wt.match(/\|globalai\s*=\s*([^\n|]*)/i);
+  const globalai = aiM ? aiM[1].trim() : '';
+
+  return { title: pageTitle, difficulties, allyPos, terrain, globalai };
 }
 
 // Déduit couleur / type d'arme / déplacement : d'abord via tes héros (nom exact),
