@@ -52,6 +52,8 @@ export type CombatMods = {
   flatDmgReduction: number; // réduction FIXE des dégâts subis (par coup)
   // Malus que CETTE unité inflige à son adversaire (Ploy, Chill, Menace, « inflige X »).
   foeAtk: number; foeSpd: number; foeDef: number; foeRes: number; // valeurs positives
+  // Bonus de ZONE que cette unité accorde à ses alliés proches (Aubaine/Hone, Ralliement, Poussée…).
+  fieldBuff: { atk: number; spd: number; def: number; res: number; range: number };
   special: SpecialInfo; // spéciale équipée (jauge simulée)
   vantage: boolean; // en défense : frappe en premier
 };
@@ -63,6 +65,7 @@ export const NO_MODS: CombatMods = {
   counterAnyRange: false, preventFoeCounter: false, neutralizeFoeBonuses: false,
   pierceFoeReduction: false, dmgReductionPct: 0, flatDmgReduction: 0,
   foeAtk: 0, foeSpd: 0, foeDef: 0, foeRes: 0,
+  fieldBuff: { atk: 0, spd: 0, def: 0, res: 0, range: 0 },
   special: { maxCd: 0, kind: 'none' }, vantage: false,
 };
 

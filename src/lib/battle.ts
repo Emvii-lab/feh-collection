@@ -44,14 +44,35 @@ export type EnemyMove = {
 const alive = (u: BattleUnit) => u.hp > 0;
 
 // Unité prête pour le moteur 1v1 : PV courants + réduction de terrain (cumul multiplicatif).
-function atTile(bu: BattleUnit, tile: string, terrain: TerrainMap): Unit {
+// Bonus de zone REÇUS par une unité (max par stat) depuis ses alliés à portée.
+function fieldBuffFor(units: BattleUnit[], self: BattleUnit, atPos: string) {
+  const r = { atk: 0, spd: 0, def: 0, res: 0 };
+  for (const o of units) {
+    if (o === self || o.side !== self.side || !alive(o)) continue;
+    const fb = o.unit.mods.fieldBuff;
+    if (!fb || !fb.range) continue;
+    if (manhattan(o.pos, atPos) <= fb.range) {
+      if (fb.atk > r.atk) r.atk = fb.atk; if (fb.spd > r.spd) r.spd = fb.spd;
+      if (fb.def > r.def) r.def = fb.def; if (fb.res > r.res) r.res = fb.res;
+    }
+  }
+  return r;
+}
+
+function atTile(bu: BattleUnit, tile: string, terrain: TerrainMap, units: BattleUnit[]): Unit {
   const tDR = terrainDR(terrain[tile]);
   const base = bu.unit.mods.dmgReductionPct || 0;
   const dr = tDR ? Math.round((1 - (1 - base / 100) * (1 - tDR / 100)) * 100) : base;
+  const fb = fieldBuffFor(units, bu, tile); // bonus de zone alliés (Hone/Fortify/Drive…)
+  const m = bu.unit.mods;
   return {
     ...bu.unit,
     stats: { ...bu.unit.stats, hp: bu.hp },
-    mods: { ...bu.unit.mods, dmgReductionPct: dr },
+    mods: {
+      ...m, dmgReductionPct: dr,
+      atkBuff: (m.atkBuff || 0) + fb.atk, spdBuff: (m.spdBuff || 0) + fb.spd,
+      defBuff: (m.defBuff || 0) + fb.def, resBuff: (m.resBuff || 0) + fb.res,
+    },
   };
 }
 
@@ -134,7 +155,7 @@ export function enemyPhase(board: Board): { board: Board; moves: EnemyMove[] } {
       for (const t of reach) {
         if (t !== e.pos && occ.has(t)) continue; // on ne s'arrête pas sur une case occupée
         if (manhattan(t, a.pos) > range) continue;
-        const sim = simulate(atTile(e, t, terrain), atTile(a, a.pos, terrain), { atk: curCharge(e), def: curCharge(a) });
+        const sim = simulate(atTile(e, t, terrain, units), atTile(a, a.pos, terrain, units), { atk: curCharge(e), def: curCharge(a) });
         if (sim.atk.total <= 0) continue; // l'IA n'attaque pas une cible à qui elle fait 0 dégât
         const opt: Option = {
           tile: t, target: a, dmg: sim.atk.total, kills: sim.ko,
@@ -145,7 +166,7 @@ export function enemyPhase(board: Board): { board: Board; moves: EnemyMove[] } {
     }
 
     if (best) {
-      const sim = simulate(atTile(e, best.tile, terrain), atTile(best.target, best.target.pos, terrain), { atk: curCharge(e), def: curCharge(best.target) });
+      const sim = simulate(atTile(e, best.tile, terrain, units), atTile(best.target, best.target.pos, terrain, units), { atk: curCharge(e), def: curCharge(best.target) });
       const from = e.pos;
       e.pos = best.tile;
       best.target.hp = sim.defHpAfter;
@@ -218,7 +239,7 @@ export function attackOptionsFor(board: Board, id: string): AttackOption[] {
     if (t !== u.pos && occ.has(t)) continue;
     for (const f of foes) {
       if (manhattan(t, f.pos) > range) continue;
-      const sim = simulate(atTile(u, t, board.terrain), atTile(f, f.pos, board.terrain), { atk: curCharge(u), def: curCharge(f) });
+      const sim = simulate(atTile(u, t, board.terrain, board.units), atTile(f, f.pos, board.terrain, board.units), { atk: curCharge(u), def: curCharge(f) });
       if (sim.atk.total <= 0) continue; // inutile d'attaquer pour 0 dégât
       out.push({ tile: t, targetId: f.id, dmg: sim.atk.total, kills: sim.ko, selfKilled: sim.counter?.atkKo ?? false });
     }
@@ -231,7 +252,7 @@ export function applyPlayerAttack(board: Board, id: string, tile: string, target
   const units = board.units.map((u) => ({ ...u }));
   const u = units.find((x) => x.id === id)!;
   const f = units.find((x) => x.id === targetId)!;
-  const sim = simulate(atTile(u, tile, board.terrain), atTile(f, f.pos, board.terrain), { atk: curCharge(u), def: curCharge(f) });
+  const sim = simulate(atTile(u, tile, board.terrain, units), atTile(f, f.pos, board.terrain, board.units), { atk: curCharge(u), def: curCharge(f) });
   u.pos = tile;
   f.hp = sim.defHpAfter;
   u.charge = sim.chargeAfter.atk; f.charge = sim.chargeAfter.def; // jauge de spéciale persistante

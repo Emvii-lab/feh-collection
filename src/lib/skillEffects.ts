@@ -31,6 +31,8 @@ export type ParsedEffects = {
   neutralizeFoeBonuses: boolean; // les bonus de l'adversaire sont annulés
   pierceFoeReduction: boolean; // annule la réduction de dégâts de l'adversaire
   foeAtk: number; foeSpd: number; foeDef: number; foeRes: number; // malus (valeurs positives)
+  // Bonus de ZONE accordés aux alliés proches (Aubaine/Hone, Fortification, Poussée…).
+  fieldBuff: { atk: number; spd: number; def: number; res: number; range: number };
   special: SpecialInfo; // spéciale équipée (jauge simulée coup par coup)
 };
 
@@ -52,6 +54,7 @@ const EMPTY = (): ParsedEffects => ({
   noFollowup: false, counterAnyRange: false,
   preventFoeCounter: false, neutralizeFoeBonuses: false, pierceFoeReduction: false,
   foeAtk: 0, foeSpd: 0, foeDef: 0, foeRes: 0,
+  fieldBuff: { atk: 0, spd: 0, def: 0, res: 0, range: 0 },
   special: { maxCd: 0, kind: 'none' },
 });
 
@@ -74,6 +77,22 @@ const CD = '(?:special cooldown|compteur[^.;]*?speciale)'; // « compteur (max) 
 const isBrave = (d: string) => /attacks?\s+twice|\bbrave\b/.test(d);
 
 // --- Chaque pattern renseigne `out` à partir d'une description nettoyée. -----------
+
+// Bonus de ZONE : « grants Atk/Spd+6 to allies within 2 spaces » / « to adjacent allies ».
+const FIELD_RE = new RegExp(
+  `(${STAT_RE}(?:/${STAT_RE})*)\\s*\\+\\s*(\\d+)\\s+to\\s+(?:unit and\\s+)?(?:adjacent allies|allies?\\s+within\\s+(\\d+))`, 'g');
+function pFieldBuff(d: string, out: ParsedEffects) {
+  FIELD_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = FIELD_RE.exec(d))) {
+    const n = +m[2];
+    const range = m[3] ? +m[3] : 1; // « adjacent » = 1 case
+    if (range > out.fieldBuff.range) out.fieldBuff.range = range;
+    for (const s of m[1].split('/')) {
+      const k = STAT_KEY[s]; if (k && n > out.fieldBuff[k]) out.fieldBuff[k] = n;
+    }
+  }
+}
 
 // P1. Bonus fixes « Atk/Res+6 » (porteur). Max par stat dans UNE description, sommé dehors.
 function pFlatBuffs(d: string, out: ParsedEffects) {
@@ -218,7 +237,9 @@ export function parseSkillEffects(skills: SkillRow[]): ParsedEffects {
     // pas en réduction/dégâts « toujours actifs » → on ne la relit pas ici (anti-doublon).
     if ((s.scategory ?? '').toLowerCase() === 'special') continue;
     const d = clean(s.description);
-    pFlatBuffs(d, out);
+    pFieldBuff(d, out); // bonus de zone aux alliés (capté à part)
+    // pour les bonus « self », on retire les clauses « … to allies within N » (anti-doublon).
+    pFlatBuffs(d.replace(new RegExp(FIELD_RE.source, 'g'), ' '), out);
     pSpecialScaledBuff(d, cd, out);
     pSpecialScaledDamage(d, cd, out);
     pStatScaledDamage(d, out);
