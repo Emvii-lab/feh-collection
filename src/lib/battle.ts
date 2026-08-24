@@ -76,8 +76,12 @@ function atTile(bu: BattleUnit, tile: string, terrain: TerrainMap, units: Battle
   };
 }
 
-// Cases occupées par d'autres unités vivantes (infranchissables pour le déplacement).
+// PASSAGE : seules les unités ADVERSES bloquent le déplacement (on traverse ses alliés).
 function blockedBy(units: BattleUnit[], self: BattleUnit): Set<string> {
+  return new Set(units.filter((u) => u !== self && alive(u) && u.side !== self.side).map((u) => u.pos));
+}
+// ARRÊT : on ne peut pas s'arrêter sur une case occupée (allié ou ennemi).
+function occupiedTiles(units: BattleUnit[], self: BattleUnit): Set<string> {
   return new Set(units.filter((u) => u !== self && alive(u)).map((u) => u.pos));
 }
 
@@ -124,7 +128,7 @@ export function enemyPhase(board: Board): { board: Board; moves: EnemyMove[] } {
     const reach = allowMove
       ? reachable(e.pos, moveAllowance(e.unit.hero.moveType), moveClass(e.unit.hero.moveType), terrain, blockedBy(units, e))
       : new Set([e.pos]);
-    const occ = blockedBy(units, e);
+    const occ = occupiedTiles(units, e);
 
     // Soigneur (bâton) : soigne l'allié le plus amoché à portée, plutôt qu'attaquer.
     if (e.unit.hero.weaponType === 'Staff') {
@@ -231,7 +235,7 @@ export function attackOptionsFor(board: Board, id: string): AttackOption[] {
   const u = board.units.find((x) => x.id === id);
   if (!u || !alive(u)) return [];
   const reach = unitReach(board, id);
-  const occ = blockedBy(board.units, u);
+  const occ = occupiedTiles(board.units, u);
   const range = weaponRange(u.unit.hero.weaponType);
   const foes = board.units.filter((x) => x.side !== u.side && alive(x));
   const out: AttackOption[] = [];

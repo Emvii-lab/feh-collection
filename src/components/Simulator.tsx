@@ -777,11 +777,19 @@ export function Simulator({
                                           </li>
                                         ))}
                                       </ul>
+                                      {t.enemy.filter((m) => m.from !== m.to || m.target).length ? (
+                                        <p className="mt-1 text-[10px] italic text-amber-300/70">
+                                          🛡️ IA prévue : {t.enemy
+                                            .filter((m) => m.from !== m.to || m.target)
+                                            .map((m) => `${m.name} ${m.from}→${m.to}${m.kills ? ' (tue)' : m.heal ? ' (soigne)' : m.target ? ' (attaque)' : ''}`)
+                                            .join(' · ')}
+                                        </p>
+                                      ) : null}
                                     </li>
                                   ))}
                                 </ol>
                                 <p className="mt-1 text-[9.5px] text-warm-mute/70">
-                                  {solveRes.nodes} états explorés. Plan valable si l'IA se comporte comme le modèle standard.
+                                  {solveRes.nodes} états explorés. « IA prévue » = mouvements ennemis <strong>estimés</strong> par le modèle ; en jeu l'IA peut bouger autrement, ce qui décale le plan.
                                 </p>
                               </>
                             ) : (
