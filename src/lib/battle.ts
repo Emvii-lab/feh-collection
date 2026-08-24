@@ -134,6 +134,66 @@ export function enemyPhase(board: Board): { board: Board; moves: EnemyMove[] } {
   return { board: { ...board, units }, moves };
 }
 
+// ---- Actions du JOUEUR (pour le solveur C3) --------------------------------
+
+// Cases où l'unité `id` peut se déplacer (terrain + unités bloquantes).
+export function unitReach(board: Board, id: string): Set<string> {
+  const u = board.units.find((x) => x.id === id);
+  if (!u || !alive(u)) return new Set();
+  return reachable(
+    u.pos, moveAllowance(u.unit.hero.moveType), moveClass(u.unit.hero.moveType),
+    board.terrain, blockedBy(board.units, u),
+  );
+}
+
+export type AttackOption = { tile: string; targetId: string; dmg: number; kills: boolean; selfKilled: boolean };
+
+// Options d'attaque de l'unité `id` : (case atteignable, ennemi à portée).
+export function attackOptionsFor(board: Board, id: string): AttackOption[] {
+  const u = board.units.find((x) => x.id === id);
+  if (!u || !alive(u)) return [];
+  const reach = unitReach(board, id);
+  const occ = blockedBy(board.units, u);
+  const range = weaponRange(u.unit.hero.weaponType);
+  const foes = board.units.filter((x) => x.side !== u.side && alive(x));
+  const out: AttackOption[] = [];
+  for (const t of reach) {
+    if (t !== u.pos && occ.has(t)) continue;
+    for (const f of foes) {
+      if (manhattan(t, f.pos) > range) continue;
+      const sim = simulate(atTile(u, t, board.terrain), atTile(f, f.pos, board.terrain));
+      out.push({ tile: t, targetId: f.id, dmg: sim.atk.total, kills: sim.ko, selfKilled: sim.counter?.atkKo ?? false });
+    }
+  }
+  return out;
+}
+
+// Applique une attaque du joueur (déplace + résout le combat). Renvoie un NOUVEL état.
+export function applyPlayerAttack(board: Board, id: string, tile: string, targetId: string): Board {
+  const units = board.units.map((u) => ({ ...u }));
+  const u = units.find((x) => x.id === id)!;
+  const f = units.find((x) => x.id === targetId)!;
+  const sim = simulate(atTile(u, tile, board.terrain), atTile(f, f.pos, board.terrain));
+  u.pos = tile;
+  f.hp = sim.defHpAfter;
+  if (sim.counter) u.hp = sim.counter.atkHpAfter;
+  return { ...board, units };
+}
+
+// Applique un simple déplacement (sans attaque).
+export function applyMove(board: Board, id: string, tile: string): Board {
+  const units = board.units.map((u) => (u.id === id ? { ...u, pos: tile } : { ...u }));
+  return { ...board, units };
+}
+
+// Empreinte d'un état (positions + PV + activation) pour la table de transposition.
+export function hashBoard(board: Board): string {
+  return board.units
+    .map((u) => `${u.id}@${u.pos}:${Math.max(0, u.hp)}${u.active ? 'a' : ''}`)
+    .sort()
+    .join('|');
+}
+
 // Bilan d'un tour : PV, morts de chaque côté.
 export function boardSummary(board: Board) {
   const allies = board.units.filter((u) => u.side === 'ally');
