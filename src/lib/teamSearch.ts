@@ -12,7 +12,7 @@ export type TeamResult = { ids: string[]; names: string[]; turns: number };
 export type SearchResult = { teams: TeamResult[]; tested: number; poolSize: number; reason: string };
 
 export type SearchOpts = {
-  maxTurns?: number; topK?: number; perTeamBudget?: number; perTeamMs?: number; maxWinners?: number;
+  maxTurns?: number; topK?: number; perTeamBudget?: number; perTeamMs?: number; maxWinners?: number; allowDeaths?: boolean;
 };
 
 // k-combinaisons d'un tableau.
@@ -72,7 +72,7 @@ export function searchTeam(
       id: u.id, side: 'ally', unit: u.unit, pos: allyPos[i].toLowerCase(), hp: u.unit.stats.hp, active: true,
     }));
     const board: Board = { units: [...enemies.map((e) => ({ ...e })), ...allies], terrain, linked };
-    const res = solve(board, { maxTurns, nodeBudget: perTeamBudget, timeLimitMs: perTeamMs, allowDeaths: false });
+    const res = solve(board, { maxTurns, nodeBudget: perTeamBudget, timeLimitMs: perTeamMs, allowDeaths: opts.allowDeaths ?? false });
     if (res.win) {
       winners.push({ ids: team.map((u) => u.id), names: team.map((u) => u.name), turns: res.turns.length });
       if (winners.length >= maxWinners) break;
