@@ -1,0 +1,148 @@
+// C1+C2 : état de combat multi-unités + résolution de la PHASE ENNEMIE via un
+// modèle d'IA FEH (best-effort, reconstitué). L'IA ennemie est DÉTERMINISTE :
+// pour un état donné, ses coups sont fixés. C'est le socle du solveur (C3).
+import { simulate, type Unit } from './combat';
+import {
+  reachable, threatZone, manhattan, moveAllowance, moveClass, weaponRange,
+  parsePos, terrainDR, type TerrainMap,
+} from './tactics';
+
+export type Side = 'ally' | 'enemy';
+export type BattleUnit = {
+  id: string;
+  side: Side;
+  unit: Unit; // hero + mods ; unit.stats.hp = PV max
+  pos: string;
+  hp: number; // PV courants
+  active: boolean; // ennemis passifs : dormant tant que non déclenché
+};
+export type Board = {
+  units: BattleUnit[];
+  terrain: TerrainMap;
+  linked: boolean; // globalai=passivelinked → un ennemi réveillé réveille tout le groupe
+};
+
+export type EnemyMove = {
+  id: string; name: string;
+  from: string; to: string;
+  target?: string; // id de l'allié attaqué
+  dmg?: number; kills?: boolean; selfKilled?: boolean;
+};
+
+const alive = (u: BattleUnit) => u.hp > 0;
+
+// Unité prête pour le moteur 1v1 : PV courants + réduction de terrain (cumul multiplicatif).
+function atTile(bu: BattleUnit, tile: string, terrain: TerrainMap): Unit {
+  const tDR = terrainDR(terrain[tile]);
+  const base = bu.unit.mods.dmgReductionPct || 0;
+  const dr = tDR ? Math.round((1 - (1 - base / 100) * (1 - tDR / 100)) * 100) : base;
+  return {
+    ...bu.unit,
+    stats: { ...bu.unit.stats, hp: bu.hp },
+    mods: { ...bu.unit.mods, dmgReductionPct: dr },
+  };
+}
+
+// Cases occupées par d'autres unités vivantes (infranchissables pour le déplacement).
+function blockedBy(units: BattleUnit[], self: BattleUnit): Set<string> {
+  return new Set(units.filter((u) => u !== self && alive(u)).map((u) => u.pos));
+}
+
+// Score d'attaque de l'IA : privilégie le KO, puis les dégâts, puis les dégâts subis.
+type Option = { tile: string; target: BattleUnit; dmg: number; kills: boolean; selfDmg: number; targetIdx: number };
+function better(a: Option, b: Option | null): boolean {
+  if (!b) return true;
+  if (a.kills !== b.kills) return a.kills; // tuer prime
+  if (a.dmg !== b.dmg) return a.dmg > b.dmg; // sinon max de dégâts
+  if (a.selfDmg !== b.selfDmg) return a.selfDmg < b.selfDmg; // puis minimiser les dégâts reçus
+  return a.targetIdx < b.targetIdx; // départage : cible de plus petit index
+}
+
+// Résout la phase ennemie complète. Renvoie le nouvel état + le journal des coups.
+export function enemyPhase(board: Board): { board: Board; moves: EnemyMove[] } {
+  const units = board.units.map((u) => ({ ...u })); // copie mutable
+  const terrain = board.terrain;
+  const moves: EnemyMove[] = [];
+  const allies = () => units.filter((u) => u.side === 'ally' && alive(u));
+  const enemies = () => units.filter((u) => u.side === 'enemy' && alive(u));
+
+  // 1) Activation des passifs : un allié dans la zone de menace de l'ennemi le réveille.
+  let anyActive = false;
+  for (const e of enemies()) {
+    if (!e.active) {
+      const tz = threatZone(
+        e.pos, moveAllowance(e.unit.hero.moveType), moveClass(e.unit.hero.moveType),
+        weaponRange(e.unit.hero.weaponType), terrain, blockedBy(units, e),
+      );
+      if (allies().some((a) => tz.has(a.pos))) e.active = true;
+    }
+    if (e.active) anyActive = true;
+  }
+  if (board.linked && anyActive) for (const e of enemies()) e.active = true;
+
+  // 2) Chaque ennemi actif agit (dans l'ordre des unités).
+  for (const e of enemies()) {
+    if (!e.active || !alive(e)) continue;
+    const move = moveAllowance(e.unit.hero.moveType);
+    const cls = moveClass(e.unit.hero.moveType);
+    const range = weaponRange(e.unit.hero.weaponType);
+    const reach = reachable(e.pos, move, cls, terrain, blockedBy(units, e));
+    const occ = blockedBy(units, e);
+
+    // Meilleure (case, cible) d'attaque.
+    let best: Option | null = null;
+    const as = allies();
+    for (let i = 0; i < as.length; i++) {
+      const a = as[i];
+      for (const t of reach) {
+        if (t !== e.pos && occ.has(t)) continue; // on ne s'arrête pas sur une case occupée
+        if (manhattan(t, a.pos) > range) continue;
+        const sim = simulate(atTile(e, t, terrain), atTile(a, a.pos, terrain));
+        const opt: Option = {
+          tile: t, target: a, dmg: sim.atk.total, kills: sim.ko,
+          selfDmg: sim.counter?.total ?? 0, targetIdx: i,
+        };
+        if (better(opt, best)) best = opt;
+      }
+    }
+
+    if (best) {
+      const sim = simulate(atTile(e, best.tile, terrain), atTile(best.target, best.target.pos, terrain));
+      const from = e.pos;
+      e.pos = best.tile;
+      best.target.hp = sim.defHpAfter;
+      if (sim.counter) e.hp = sim.counter.atkHpAfter;
+      moves.push({
+        id: e.id, name: e.unit.hero.name, from, to: best.tile, target: best.target.id,
+        dmg: sim.atk.total, kills: sim.ko, selfKilled: e.hp <= 0,
+      });
+    } else if (as.length) {
+      // Pas de cible atteignable → avancer vers l'allié le plus proche.
+      let dest = e.pos, bestD = Infinity;
+      for (const t of reach) {
+        if (t !== e.pos && occ.has(t)) continue;
+        const d = Math.min(...as.map((a) => manhattan(t, a.pos)));
+        if (d < bestD) { bestD = d; dest = t; }
+      }
+      if (dest !== e.pos) {
+        moves.push({ id: e.id, name: e.unit.hero.name, from: e.pos, to: dest });
+        e.pos = dest;
+      }
+    }
+  }
+
+  return { board: { ...board, units }, moves };
+}
+
+// Bilan d'un tour : PV, morts de chaque côté.
+export function boardSummary(board: Board) {
+  const allies = board.units.filter((u) => u.side === 'ally');
+  const enemies = board.units.filter((u) => u.side === 'enemy');
+  return {
+    alliesAlive: allies.filter(alive).length, alliesTotal: allies.length,
+    enemiesAlive: enemies.filter(alive).length, enemiesTotal: enemies.length,
+    allDead: enemies.every((u) => !alive(u)),
+    lostUnit: allies.some((u) => !alive(u)),
+  };
+}
+export { alive, parsePos };
