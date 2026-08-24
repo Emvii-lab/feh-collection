@@ -48,13 +48,15 @@ function blockedBy(units: BattleUnit[], self: BattleUnit): Set<string> {
   return new Set(units.filter((u) => u !== self && alive(u)).map((u) => u.pos));
 }
 
-// Score d'attaque de l'IA : privilégie le KO, puis les dégâts, puis les dégâts subis.
-type Option = { tile: string; target: BattleUnit; dmg: number; kills: boolean; selfDmg: number; targetIdx: number };
+// Score d'attaque de l'IA (modèle FEH best-effort) : tuer prime ; sinon éviter de
+// mourir ; puis max de dégâts ; puis minimiser les dégâts subis ; puis cible d'index bas.
+type Option = { tile: string; target: BattleUnit; dmg: number; kills: boolean; selfKilled: boolean; selfDmg: number; targetIdx: number };
 function better(a: Option, b: Option | null): boolean {
   if (!b) return true;
-  if (a.kills !== b.kills) return a.kills; // tuer prime
-  if (a.dmg !== b.dmg) return a.dmg > b.dmg; // sinon max de dégâts
-  if (a.selfDmg !== b.selfDmg) return a.selfDmg < b.selfDmg; // puis minimiser les dégâts reçus
+  if (a.kills !== b.kills) return a.kills; // tuer prime (vaut le sacrifice)
+  if (a.selfKilled !== b.selfKilled) return !a.selfKilled; // sinon, éviter de se faire tuer
+  if (a.dmg !== b.dmg) return a.dmg > b.dmg; // max de dégâts
+  if (a.selfDmg !== b.selfDmg) return a.selfDmg < b.selfDmg; // minimiser les dégâts reçus
   return a.targetIdx < b.targetIdx; // départage : cible de plus petit index
 }
 
@@ -98,9 +100,10 @@ export function enemyPhase(board: Board): { board: Board; moves: EnemyMove[] } {
         if (t !== e.pos && occ.has(t)) continue; // on ne s'arrête pas sur une case occupée
         if (manhattan(t, a.pos) > range) continue;
         const sim = simulate(atTile(e, t, terrain), atTile(a, a.pos, terrain));
+        if (sim.atk.total <= 0) continue; // l'IA n'attaque pas une cible à qui elle fait 0 dégât
         const opt: Option = {
           tile: t, target: a, dmg: sim.atk.total, kills: sim.ko,
-          selfDmg: sim.counter?.total ?? 0, targetIdx: i,
+          selfKilled: sim.counter?.atkKo ?? false, selfDmg: sim.counter?.total ?? 0, targetIdx: i,
         };
         if (better(opt, best)) best = opt;
       }
@@ -162,6 +165,7 @@ export function attackOptionsFor(board: Board, id: string): AttackOption[] {
     for (const f of foes) {
       if (manhattan(t, f.pos) > range) continue;
       const sim = simulate(atTile(u, t, board.terrain), atTile(f, f.pos, board.terrain));
+      if (sim.atk.total <= 0) continue; // inutile d'attaquer pour 0 dégât
       out.push({ tile: t, targetId: f.id, dmg: sim.atk.total, kills: sim.ko, selfKilled: sim.counter?.atkKo ?? false });
     }
   }
@@ -176,6 +180,7 @@ export function applyPlayerAttack(board: Board, id: string, tile: string, target
   const sim = simulate(atTile(u, tile, board.terrain), atTile(f, f.pos, board.terrain));
   u.pos = tile;
   f.hp = sim.defHpAfter;
+  if (f.side === 'enemy') f.active = true; // un ennemi attaqué se réveille (le groupe suit si linked)
   if (sim.counter) u.hp = sim.counter.atkHpAfter;
   return { ...board, units };
 }

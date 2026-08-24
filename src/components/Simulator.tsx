@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Color, Hero, WeaponType } from '../types';
 import type { CollStats } from '../lib/collection';
 import {
   resolveStats, combatVerdict,
   NO_MODS, type Sim, type Unit, type Verdict, type CombatMods,
 } from '../lib/combat';
-import { solve, type SolveResult } from '../lib/solver';
+import { type SolveResult } from '../lib/solver';
+import type { SolverResponse } from '../lib/solverWorker';
 import type { Board, BattleUnit } from '../lib/battle';
 import { fetchTeamWeapons, fetchEnemyCombat, EMPTY_EFFECTS, type WeaponInfo, type EnemyCombat } from '../lib/simWeapons';
 import type { SpecialInfo } from '../lib/skillEffects';
@@ -354,16 +355,20 @@ export function Simulator({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [team, enemyUnit, weaponInfo, unitMods, stats]);
 
-  // ===== Solveur de carte (C4) : construit le plateau et cherche une ligne gagnante.
+  // ===== Solveur de carte : construit le plateau, cherche une ligne gagnante (Web Worker).
   const [solving, setSolving] = useState(false);
   const [solveRes, setSolveRes] = useState<SolveResult | null>(null);
   const [solveTurns, setSolveTurns] = useState(3);
   const [solveDeaths, setSolveDeaths] = useState(false);
+  const [solveNodes, setSolveNodes] = useState(0);
+  const workerRef = useRef<Worker | null>(null);
+  useEffect(() => () => workerRef.current?.terminate(), []); // nettoyage à la fermeture
 
   const runSolver = async () => {
     if (!wikiMap) return;
     setSolving(true);
     setSolveRes(null);
+    setSolveNodes(0);
     try {
       const foes = wikiMap.difficulties[wikiDiff] ?? [];
       const passive = /passive/i.test(wikiMap.globalai);
@@ -399,13 +404,31 @@ export function Simulator({
       });
       if (!allyUnits.length) {
         setSolveRes({ win: false, turns: [], nodes: 0, reason: 'Ajoute des persos (avec stats saisies) puis relance.' });
+        setSolving(false);
         return;
       }
       const board: Board = { units: [...enemyUnits, ...allyUnits], terrain, linked };
-      await new Promise((r) => setTimeout(r, 30)); // laisse l'UI afficher « Calcul… »
-      const res = solve(board, { maxTurns: solveTurns, nodeBudget: 20000, allowDeaths: solveDeaths });
-      setSolveRes(res);
-    } finally {
+      // Calcul dans un Web Worker : gros budget sans figer l'interface.
+      workerRef.current?.terminate();
+      const worker = new Worker(new URL('../lib/solverWorker.ts', import.meta.url), { type: 'module' });
+      workerRef.current = worker;
+      worker.onmessage = (ev: MessageEvent<SolverResponse>) => {
+        const msg = ev.data;
+        if (msg.type === 'progress') setSolveNodes(msg.nodes);
+        else {
+          setSolveRes(msg.result);
+          setSolveNodes(msg.result.nodes);
+          setSolving(false);
+          worker.terminate();
+          if (workerRef.current === worker) workerRef.current = null;
+        }
+      };
+      worker.postMessage({
+        board,
+        opts: { maxTurns: solveTurns, nodeBudget: 3_000_000, timeLimitMs: 12_000, allowDeaths: solveDeaths },
+      });
+    } catch {
+      setSolveRes({ win: false, turns: [], nodes: 0, reason: 'Erreur pendant la préparation du calcul.' });
       setSolving(false);
     }
   };
@@ -594,8 +617,22 @@ export function Simulator({
                             onClick={runSolver}
                             className="rounded-lg border border-fuchsia-300/40 bg-fuchsia-500/20 px-3 py-1.5 font-feh text-[12px] font-semibold text-fuchsia-100 transition hover:bg-fuchsia-500/30 disabled:opacity-60"
                           >
-                            {solving ? '⏳ Calcul…' : '🧠 Résoudre la carte'}
+                            {solving ? `⏳ ${solveNodes.toLocaleString('fr')} états…` : '🧠 Résoudre la carte'}
                           </button>
+                          {solving ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                workerRef.current?.terminate();
+                                workerRef.current = null;
+                                setSolving(false);
+                                setSolveRes({ win: false, turns: [], nodes: solveNodes, reason: 'Calcul arrêté.' });
+                              }}
+                              className="rounded-lg border border-red-300/40 bg-red-500/15 px-2.5 py-1.5 font-feh text-[12px] text-red-200 transition hover:bg-red-500/25"
+                            >
+                              ✕ Stop
+                            </button>
+                          ) : null}
                           <label className="flex items-center gap-1 text-[10.5px] text-warm-mute">
                             tours
                             <select
@@ -646,7 +683,7 @@ export function Simulator({
                           </div>
                         ) : (
                           <p className="mt-1.5 text-[10px] text-warm-mute/70">
-                            Cherche une suite de placements/attaques qui nettoie la carte (départ sur tes cases, phase ennemie simulée). Recherche rapide : peut dire « pas trouvé » sur les cartes dures.
+                            Cherche une suite de placements/attaques qui nettoie la carte (départ sur tes cases, IA ennemie simulée). Calcul en tâche de fond (~12 s max) : « pas trouvé » = aucune ligne dans la limite, pas forcément impossible.
                           </p>
                         )}
                       </div>

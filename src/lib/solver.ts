@@ -15,14 +15,18 @@ export type PlayerMove = {
 export type PlanTurn = { player: PlayerMove[]; enemy: EnemyMove[] };
 export type SolveResult = { win: boolean; turns: PlanTurn[]; nodes: number; reason: string };
 
-export type SolveOpts = { maxTurns?: number; allowDeaths?: boolean; nodeBudget?: number };
+export type SolveOpts = { maxTurns?: number; allowDeaths?: boolean; nodeBudget?: number; timeLimitMs?: number };
 
-export function solve(board: Board, opts: SolveOpts = {}): SolveResult {
+export function solve(
+  board: Board, opts: SolveOpts = {}, onProgress?: (nodes: number) => void,
+): SolveResult {
   const maxTurns = opts.maxTurns ?? 3;
   const allowDeaths = opts.allowDeaths ?? false;
   const budget = opts.nodeBudget ?? 200_000;
+  const deadline = Date.now() + (opts.timeLimitMs ?? 15_000);
   const seen = new Set<string>();
   let nodes = 0;
+  let timedOut = false;
   let out: SolveResult | null = null;
 
   // Génère les états après une PHASE JOUEUR complète (chaque allié agit une fois).
@@ -74,6 +78,10 @@ export function solve(board: Board, opts: SolveOpts = {}): SolveResult {
     if (boardSummary(b).allDead) { out = { win: true, turns: plan, nodes, reason: 'Carte nettoyée.' }; return true; }
     if (turn >= maxTurns) return false;
     if (++nodes > budget) return false;
+    if ((nodes & 1023) === 0) {
+      onProgress?.(nodes);
+      if (Date.now() > deadline) { timedOut = true; return false; }
+    }
     const key = hashBoard(b) + '#' + turn;
     if (seen.has(key)) return false;
     seen.add(key);
@@ -90,8 +98,10 @@ export function solve(board: Board, opts: SolveOpts = {}): SolveResult {
   dfs(board, 0, []);
   return out ?? {
     win: false, turns: [], nodes,
-    reason: nodes > budget
-      ? 'Budget de calcul atteint : aucune ligne gagnante trouvée dans la limite.'
-      : `Aucune ligne gagnante en ${maxTurns} tour(s) sans perte.`,
+    reason: timedOut
+      ? 'Temps de calcul écoulé : aucune ligne gagnante trouvée (essaie moins de tours).'
+      : nodes > budget
+        ? 'Budget de calcul atteint : aucune ligne gagnante trouvée dans la limite.'
+        : `Aucune ligne gagnante en ${maxTurns} tour(s)${allowDeaths ? '' : ' sans perte'}.`,
   };
 }
