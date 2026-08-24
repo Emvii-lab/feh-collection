@@ -549,77 +549,57 @@ export function Simulator({
     }
   };
 
-  // ===== Théorycraft : quelle équipe DU JEU (tous les héros) nettoierait la carte ?
+  // ===== Théorycraft : classe les héros DU JEU qui gèrent le boss en duel (fiable).
+  type TcRow = { id: string; name: string; title: string; verdict: Verdict; hp: number; atk: number; spd: number; def: number; res: number };
+  const [tcRows, setTcRows] = useState<TcRow[] | null>(null);
+  const [tcRunning, setTcRunning] = useState(false);
+
   const runTheoryCraft = async () => {
     if (!wikiMap) return;
-    setSearching(true);
-    setSearchScope('game');
-    setSearchRes(null);
-    setSearchProg({ tested: 0, total: 0 });
-    setBuiltIds(new Set());
+    setTcRunning(true);
+    setTcRows(null);
     try {
       const foes = wikiMap.difficulties[wikiDiff] ?? [];
       const boss = foes.reduce((a, b) => (b.hp > a.hp ? b : a), foes[0]);
+      if (!boss) { setTcRows([]); setTcRunning(false); return; }
       const MAGIC = /Tome|Staff|Dragon/;
-      const bossMagic = boss ? MAGIC.test(resolveEnemy(boss, heroByName).weaponType) : false;
+      const br = resolveEnemy(boss, heroByName);
+      const bossMagic = MAGIC.test(br.weaponType);
       type St = { atk: number; spd: number; def: number; res: number; hp: number };
-      const prefScore = (h: Hero, s: St): number => {
-        if (!boss) return s.atk + s.spd + s.def + s.res;
+      // pré-tri stat pour ne prendre les effets que des ~40 candidats les plus prometteurs
+      const prelim = (h: Hero, s: St) => {
         const mit = MAGIC.test(h.weaponType) ? boss.res : boss.def;
-        const dmg = Math.max(0, s.atk - mit);
-        const surv = (bossMagic ? s.res : s.def) + s.hp - boss.atk;
-        return dmg * 2 + Math.max(0, surv);
+        return Math.max(0, s.atk - mit) * 2 + Math.max(0, (bossMagic ? s.res : s.def) + s.hp - boss.atk);
       };
       const statsMap = await fetchAllHeroStats();
-      const ranked = heroes
+      const top = heroes
         .map((h) => ({ h, s: statsMap.get(h.id) }))
         .filter((x): x is { h: Hero; s: St } => !!x.s)
-        .map((x) => ({ ...x, sc: prefScore(x.h, x.s) }))
-        .sort((a, b) => b.sc - a.sc)
-        .slice(0, 20);
-      const wmap = await fetchTeamWeapons(ranked.map((x) => x.h.id), null); // héros non possédés → meilleure arme
-      const pool: SearchUnit[] = ranked.map(({ h, s }) => {
+        .sort((a, b) => prelim(b.h, b.s) - prelim(a.h, a.s))
+        .slice(0, 40);
+      const [wmap, bmods] = await Promise.all([
+        fetchTeamWeapons(top.map((x) => x.h.id), null),
+        fetchEnemyCombat(boss.skills),
+      ]);
+      const bossUnit: Unit = {
+        hero: { id: 'boss', name: boss.name, title: '', color: br.color, weaponType: br.weaponType, moveType: br.moveType, rarity: 5, origin: '' } as Hero,
+        stats: { hp: boss.hp, atk: boss.atk, spd: boss.spd, def: boss.def, res: boss.res },
+        mods: toMods(bmods, []),
+      };
+      const rows: TcRow[] = top.map(({ h, s }) => {
         const wi = wmap.get(h.id) ?? NO_WI;
         const hero = { id: h.id, name: h.name, title: h.title, color: h.color, weaponType: h.weaponType, moveType: h.moveType, rarity: 5, origin: '' } as Hero;
-        return { id: h.id, name: h.name, title: h.title, unit: { hero, stats: s, mods: toMods(wi.effects, wi.effAgainst) } };
+        const { verdict } = combatVerdict({ hero, stats: s, mods: toMods(wi.effects, wi.effAgainst) }, bossUnit);
+        return { id: h.id, name: h.name, title: h.title, verdict, ...s };
       });
-
-      const passive = /passive/i.test(wikiMap.globalai || '');
-      const linked = /linked/i.test(wikiMap.globalai || '');
-      const edits = load<TerrainMap>('feh.sim.terrain.' + wikiMap.title, {});
-      const terrain = { ...(MAP_TERRAIN[wikiMap.title] ?? {}), ...wikiMap.terrain, ...edits };
-      const emods = await Promise.all(foes.map((e) => fetchEnemyCombat(e.skills)));
-      const enemyUnits: BattleUnit[] = foes.map((e, i) => {
-        const r = resolveEnemy(e, heroByName);
-        return {
-          id: 'E' + i, side: 'enemy',
-          unit: {
-            hero: { id: 'E' + i, name: e.name, title: '', color: r.color, weaponType: r.weaponType, moveType: r.moveType, rarity: 5, origin: '' } as Hero,
-            stats: { hp: e.hp, atk: e.atk, spd: e.spd, def: e.def, res: e.res }, mods: toMods(emods[i], []),
-          },
-          pos: e.pos.toLowerCase(), hp: e.hp, active: !passive, refresher: isRefresher(e.skills),
-        };
-      });
-      workerRef.current?.terminate();
-      const worker = new Worker(new URL('../lib/solverWorker.ts', import.meta.url), { type: 'module' });
-      workerRef.current = worker;
-      worker.onmessage = (ev: MessageEvent<SolverResponse>) => {
-        const msg = ev.data;
-        if (msg.type === 'searchProgress') setSearchProg({ tested: msg.tested, total: msg.total });
-        else if (msg.type === 'searchDone') {
-          setSearchRes(msg.result);
-          setSearching(false);
-          worker.terminate();
-          if (workerRef.current === worker) workerRef.current = null;
-        }
-      };
-      worker.postMessage({
-        kind: 'search', pool, enemies: enemyUnits, terrain, allyPos: wikiMap.allyPos, linked,
-        opts: { maxTurns: solveTurns, topK: 6, perTeamBudget: 400_000, perTeamMs: 2500 },
-      });
+      rows.sort((a, b) =>
+        VERDICT_META[a.verdict].order - VERDICT_META[b.verdict].order ||
+        (bossMagic ? b.res - a.res : b.def - a.def) || b.hp - a.hp);
+      setTcRows(rows.slice(0, 14));
     } catch {
-      setSearchRes({ teams: [], tested: 0, poolSize: 0, reason: 'Erreur pendant la préparation du théorycraft.' });
-      setSearching(false);
+      setTcRows([]);
+    } finally {
+      setTcRunning(false);
     }
   };
 
@@ -895,24 +875,22 @@ export function Simulator({
                         <div className="flex flex-wrap items-center gap-2">
                           <button
                             type="button"
-                            disabled={searching}
+                            disabled={searching || tcRunning}
                             onClick={runTeamSearch}
                             className="rounded-lg border border-cyan-300/40 bg-cyan-500/20 px-3 py-1.5 font-feh text-[12px] font-semibold text-cyan-100 transition hover:bg-cyan-500/30 disabled:opacity-60"
                           >
-                            {searching && searchScope === 'roster'
+                            {searching
                               ? `⏳ équipe ${searchProg.tested}/${searchProg.total || '…'}…`
-                              : '🔎 Dans ta collection'}
+                              : '🔎 Équipe (ta collection)'}
                           </button>
                           <button
                             type="button"
-                            disabled={searching}
+                            disabled={searching || tcRunning}
                             onClick={runTheoryCraft}
-                            title="Cherche parmi TOUS les héros du jeu (stats du wiki) une équipe qui nettoie la carte"
+                            title="Classe TOUS les héros du jeu (stats du wiki) selon leur tenue en duel face au boss"
                             className="rounded-lg border border-violet-300/40 bg-violet-500/20 px-3 py-1.5 font-feh text-[12px] font-semibold text-violet-100 transition hover:bg-violet-500/30 disabled:opacity-60"
                           >
-                            {searching && searchScope === 'game'
-                              ? `⏳ équipe ${searchProg.tested}/${searchProg.total || '…'}…`
-                              : '🔮 Théorycraft (tout le jeu)'}
+                            {tcRunning ? '⏳ analyse…' : '🔮 Meilleurs héros (tout le jeu)'}
                           </button>
                           {searching ? (
                             <button
@@ -984,9 +962,37 @@ export function Simulator({
                           )
                         ) : (
                           <p className="mt-1.5 text-[10px] text-warm-mute/70">
-                            <strong>Dans ta collection</strong> : équipe gagnante parmi tes persos jouables (stats saisies). <strong>Théorycraft</strong> : parmi TOUS les héros du jeu (stats du wiki, 5★ neutre) — pour savoir qui viser/monter si ta collection ne passe pas.
+                            <strong>Équipe (ta collection)</strong> : cherche une équipe gagnante parmi tes persos. <strong>Meilleurs héros</strong> : classe TOUS les héros du jeu selon leur tenue en duel face au boss (qui viser/monter).
                           </p>
                         )}
+
+                        {/* ===== Théorycraft : classement des héros du jeu ===== */}
+                        {tcRunning ? (
+                          <p className="mt-2 text-[11px] text-violet-200/80">⏳ Analyse des ~40 meilleurs héros du jeu face au boss…</p>
+                        ) : tcRows ? (
+                          tcRows.length ? (
+                            <div className="mt-2 text-[11.5px]">
+                              <p className="font-feh font-semibold text-violet-200">🔮 Héros du jeu qui gèrent le boss (duel 1v1) :</p>
+                              <ol className="mt-1 grid grid-cols-1 gap-0.5 sm:grid-cols-2">
+                                {tcRows.map((r, i) => (
+                                  <li key={r.id} className="flex items-center gap-1.5 rounded bg-black/25 px-2 py-0.5">
+                                    <span className="w-3.5 shrink-0 text-right text-[9px] text-warm-mute">{i + 1}</span>
+                                    <span className="min-w-0 flex-1 truncate text-warm-dim">
+                                      {r.name} <span className="text-[9px] text-warm-mute">{r.title}</span>
+                                    </span>
+                                    <span className={`shrink-0 rounded border px-1 text-[8px] ${VERDICT_META[r.verdict].cls}`}>{VERDICT_META[r.verdict].label}</span>
+                                    <span className="shrink-0 text-[8.5px] text-warm-mute">RÉS {r.res} · PV {r.hp}</span>
+                                  </li>
+                                ))}
+                              </ol>
+                              <p className="mt-1 text-[9.5px] text-warm-mute/70">
+                                Duel 1v1 vs le boss, chaque héros en <strong>5★ neutre + meilleure arme</strong> (sans merges/IV/passifs → prudent). Compose une équipe avec ceux qui « <span className="text-emerald-300/80">Le tue</span> » / « Survit ». Ça dit <strong>qui viser</strong>, pas un clear garanti.
+                              </p>
+                            </div>
+                          ) : (
+                            <p className="mt-2 text-[11.5px] text-amber-300/90">Aucun héros exploitable (stats manquantes).</p>
+                          )
+                        ) : null}
                       </div>
                     </div>
                   ) : null}
