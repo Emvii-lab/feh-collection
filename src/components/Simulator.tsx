@@ -15,6 +15,7 @@ import {
   reachable, attackFrom, threatZone, moveAllowance, weaponRange, moveClass,
   type Terrain, type TerrainMap,
 } from '../lib/tactics';
+import { MAP_TERRAIN } from '../data/mapTerrain';
 
 // Persistance légère (équipe + carte ennemie) entre les ouvertures / rechargements.
 const load = <T,>(key: string, fallback: T): T => {
@@ -663,10 +664,12 @@ const shortLabel = (n: string) =>
 const TERRAIN_BG: Record<Terrain, string> = {
   plain: '', wall: 'bg-stone-500/70', forest: 'bg-green-800/50',
   water: 'bg-blue-700/45', trench: 'bg-amber-900/40',
+  fort: 'bg-amber-300/30', defensive: 'bg-amber-300/30', mountain: 'bg-stone-600/60',
 };
 const BRUSHES: { t: Terrain; label: string }[] = [
   { t: 'plain', label: 'Plaine' }, { t: 'wall', label: 'Mur' },
   { t: 'forest', label: 'Forêt' }, { t: 'water', label: 'Eau' },
+  { t: 'fort', label: 'Fort' },
 ];
 
 function MapGrid({
@@ -693,7 +696,8 @@ function MapGrid({
   const tKey = 'feh.sim.terrain.' + mapKey;
   const [edits, setEdits] = useState<TerrainMap>(() => load<TerrainMap>(tKey, {}));
   useEffect(() => { setEdits(load<TerrainMap>(tKey, {})); }, [tKey]);
-  const terrain: TerrainMap = { ...wikiTerrain, ...edits };
+  // Terrain effectif : pré-rempli (image) < murs auto du wiki < tes retouches.
+  const terrain: TerrainMap = { ...(MAP_TERRAIN[mapKey] ?? {}), ...wikiTerrain, ...edits };
   const paint = (pos: string) => {
     setEdits((prev) => {
       const next = { ...prev };
@@ -870,9 +874,10 @@ function MapGrid({
         <span><span className="inline-block h-2 w-2 rounded-[1px] bg-stone-500/70 align-middle" /> mur</span>
         <span><span className="inline-block h-2 w-2 rounded-[1px] bg-green-800/60 align-middle" /> forêt</span>
         <span><span className="inline-block h-2 w-2 rounded-[1px] bg-blue-700/60 align-middle" /> eau</span>
+        <span><span className="inline-block h-2 w-2 rounded-[1px] bg-amber-300/50 align-middle" /> fort (−30%)</span>
       </div>
       <p className="mt-0.5 text-center text-[9px] text-warm-mute/70">
-        Murs auto depuis le wiki ; peins forêt/eau à la main. Sans IA ni déplacements spéciaux : repère visuel, pas une garantie.
+        Terrain pré-rempli (lu de l'image) + murs du wiki ; corrige au pinceau. Fort/forêt passables (fort ≠ blocage, il réduit les dégâts). Sans IA : repère, pas une garantie.
       </p>
     </div>
   );
