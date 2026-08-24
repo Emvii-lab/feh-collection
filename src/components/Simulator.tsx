@@ -104,7 +104,7 @@ type EnemyState = {
 type UnitMods = { atkBuff: number; guaranteedFollowup: boolean; dmgReductionPct: number };
 
 const VERDICT_META: Record<Verdict, { label: string; cls: string; order: number }> = {
-  ko: { label: 'K.O. la carte', cls: 'border-emerald-400/40 bg-emerald-500/15 text-emerald-200', order: 0 },
+  ko: { label: 'Le tue (duel)', cls: 'border-emerald-400/40 bg-emerald-500/15 text-emerald-200', order: 0 },
   win: { label: 'Survit (ne le tue pas)', cls: 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200/90', order: 1 },
   trade: { label: 'Survit, chip', cls: 'border-gold-deep/40 bg-black/25 text-gold-text', order: 2 },
   lose: { label: 'Se fait tuer', cls: 'border-red-400/40 bg-red-500/15 text-red-200', order: 3 },
@@ -951,6 +951,9 @@ export function Simulator({
           <div className="mb-1 font-feh text-[12px] font-semibold text-warm-dim">
             👥 Mon équipe à tester ({team.length})
           </div>
+          <p className="mb-1 text-[10px] text-warm-mute/70">
+            Verdicts en <strong>duel 1v1</strong> contre l'ennemi sélectionné (« Le tue » = ce perso le tue seul). Pour savoir si l'équipe nettoie <strong>toute</strong> la carte, utilise « Résoudre la carte ».
+          </p>
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
