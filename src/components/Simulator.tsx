@@ -151,6 +151,13 @@ export function Simulator({
   // Chargement d'une carte depuis le wiki FEH (mémorisé pour réafficher la grille).
   const [wikiUrl, setWikiUrl] = useState(() => load<string>('feh.sim.wikiUrl', ''));
   const [wikiMap, setWikiMap] = useState<WikiMap | null>(() => load<WikiMap | null>('feh.sim.wikiMap', null));
+  // Auto-réparation : une carte en cache d'avant l'ajout de `globalai` (ou du terrain)
+  // manque des champs → on la re-télécharge pour retrouver le bon comportement d'IA.
+  useEffect(() => {
+    if (wikiMap && wikiMap.globalai === undefined && wikiMap.title) {
+      fetchWikiMap(wikiMap.title).then(setWikiMap).catch(() => {});
+    }
+  }, [wikiMap]);
   const [wikiDiff, setWikiDiff] = useState(() => load<string>('feh.sim.wikiDiff', ''));
   const [wikiLoading, setWikiLoading] = useState(false);
   const [wikiError, setWikiError] = useState<string | null>(null);
