@@ -15,6 +15,8 @@ export type WikiMap = {
   allyPos: string[]; // cases de départ des alliés
   terrain: Record<string, 'wall' | 'forest' | 'water' | 'trench'>; // murs lus du wiki (le reste = plaine)
   globalai: string; // ex. "passivelinked" : passif = dormant, linked = réveil de groupe
+  baseMap: string; // ex. "T0226" : identifiant de l'image de fond
+  mapImageUrl?: string; // URL de l'image de la carte (résolue via le wiki)
 };
 
 export type ResolvedEnemy = WikiEnemy & {
@@ -96,8 +98,27 @@ export async function fetchWikiMap(pageTitle: string): Promise<WikiMap> {
 
   const aiM = wt.match(/\|globalai\s*=\s*([^\n|]*)/i);
   const globalai = aiM ? aiM[1].trim() : '';
+  const bmM = wt.match(/baseMap\s*=\s*(\w+)/i);
+  const baseMap = bmM ? bmM[1] : '';
 
-  return { title: pageTitle, difficulties, allyPos, terrain, globalai };
+  // Résout l'URL de l'image de fond de la carte (File:Map_T####.webp) via le wiki.
+  let mapImageUrl: string | undefined;
+  if (baseMap) {
+    try {
+      const iu =
+        'https://feheroes.fandom.com/api.php?action=query&prop=imageinfo&iiprop=url&format=json&origin=*&titles=' +
+        encodeURIComponent('File:Map_' + baseMap + '.webp');
+      const ir = await fetch(iu);
+      const ij = await ir.json();
+      const pages = ij?.query?.pages ?? {};
+      const first = pages[Object.keys(pages)[0]];
+      mapImageUrl = first?.imageinfo?.[0]?.url;
+    } catch {
+      /* image de fond optionnelle : on ignore l'échec */
+    }
+  }
+
+  return { title: pageTitle, difficulties, allyPos, terrain, globalai, baseMap, mapImageUrl };
 }
 
 // Déduit couleur / type d'arme / déplacement : d'abord via tes héros (nom exact),

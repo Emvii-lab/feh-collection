@@ -581,6 +581,7 @@ export function Simulator({
                         onPick={pickWikiEnemy}
                         wikiTerrain={wikiMap.terrain}
                         mapKey={wikiMap.title}
+                        mapImageUrl={wikiMap.mapImageUrl}
                       />
                       <div className="mt-2 flex flex-wrap gap-1.5">
                         {(wikiMap.difficulties[wikiDiff] ?? []).map((u, i) => (
@@ -847,7 +848,7 @@ const BRUSHES: { t: Terrain; label: string }[] = [
 ];
 
 function MapGrid({
-  enemies, allyPos, team, selectedPos, heroByName, onPick, wikiTerrain, mapKey,
+  enemies, allyPos, team, selectedPos, heroByName, onPick, wikiTerrain, mapKey, mapImageUrl,
 }: {
   enemies: WikiEnemy[];
   allyPos: string[];
@@ -857,7 +858,10 @@ function MapGrid({
   onPick: (u: WikiEnemy) => void;
   wikiTerrain: TerrainMap;
   mapKey: string;
+  mapImageUrl?: string;
 }) {
+  const [showImage, setShowImage] = useState(true);
+  const bg = Boolean(mapImageUrl) && showImage; // image de fond active
   const enemyAt = new Map(enemies.map((e) => [e.pos.toLowerCase(), e]));
   const allyOrder = allyPos.map((p) => p.toLowerCase()); // ordonné : 1re case → 1er perso
   const cols = ['a', 'b', 'c', 'd', 'e', 'f'];
@@ -968,7 +972,17 @@ function MapGrid({
           Clique une case pour la peindre en « {BRUSHES.find((b) => b.t === brush)?.label} ».
         </p>
       ) : null}
-      <div className="grid gap-[2px]" style={{ gridTemplateColumns: 'repeat(6, 1fr)' }}>
+      {mapImageUrl ? (
+        <label className="mb-1 flex items-center justify-center gap-1 text-[9.5px] text-warm-mute">
+          <input type="checkbox" checked={showImage} onChange={(e) => setShowImage(e.target.checked)} className="h-3 w-3 accent-gold" />
+          image de la carte en fond
+        </label>
+      ) : null}
+      <div className="relative">
+        {bg ? (
+          <img src={mapImageUrl} alt="" className="pointer-events-none absolute inset-0 h-full w-full rounded-[4px] object-cover opacity-90" />
+        ) : null}
+        <div className="relative grid gap-[2px]" style={{ gridTemplateColumns: 'repeat(6, 1fr)' }}>
         {rows.flatMap((r) =>
           cols.map((c) => {
             const pos = c + r;
@@ -981,7 +995,9 @@ function MapGrid({
             const isReach = reachSet.has(pos) && !isAttack;
             const isThreat = threatSet.has(pos);
             const terr = terrain[pos] ?? 'plain';
-            const terrBg = TERRAIN_BG[terr] || (isAlly ? 'bg-sky-500/10' : 'bg-black/25');
+            const terrBg = bg
+              ? 'bg-transparent' // l'image montre déjà le terrain
+              : TERRAIN_BG[terr] || (isAlly ? 'bg-sky-500/10' : 'bg-black/25');
             const overlay = isAttack ? 'bg-amber-400/45' : isReach ? 'bg-sky-500/30' : '';
             return (
               <div
@@ -1040,6 +1056,7 @@ function MapGrid({
             );
           }),
         )}
+        </div>
       </div>
       <div className="mt-1.5 flex flex-wrap items-center justify-center gap-x-3 gap-y-0.5 text-[9.5px] text-warm-mute">
         <span><span className="inline-block h-2 w-2 rounded-[1px] bg-sky-500/40 align-middle" /> déplacement</span>

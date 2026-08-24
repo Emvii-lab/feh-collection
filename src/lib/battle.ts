@@ -25,8 +25,9 @@ export type Board = {
 export type EnemyMove = {
   id: string; name: string;
   from: string; to: string;
-  target?: string; // id de l'allié attaqué
+  target?: string; // id de l'unité visée (attaquée ou soignée)
   dmg?: number; kills?: boolean; selfKilled?: boolean;
+  heal?: number; // soin prodigué (soigneur au bâton)
 };
 
 const alive = (u: BattleUnit) => u.hp > 0;
@@ -90,6 +91,27 @@ export function enemyPhase(board: Board): { board: Board; moves: EnemyMove[] } {
     const range = weaponRange(e.unit.hero.weaponType);
     const reach = reachable(e.pos, move, cls, terrain, blockedBy(units, e));
     const occ = blockedBy(units, e);
+
+    // Soigneur (bâton) : soigne l'allié le plus amoché à portée, plutôt qu'attaquer.
+    if (e.unit.hero.weaponType === 'Staff') {
+      let healTile: string | null = null, healTgt: BattleUnit | null = null, worst = 0;
+      for (const o of enemies()) {
+        if (o.id === e.id || !alive(o)) continue;
+        const missing = o.unit.stats.hp - o.hp;
+        if (missing <= 0) continue;
+        for (const t of reach) {
+          if (t !== e.pos && occ.has(t)) continue;
+          if (manhattan(t, o.pos) <= 2 && missing > worst) { worst = missing; healTile = t; healTgt = o; }
+        }
+      }
+      if (healTgt && healTile) {
+        const heal = Math.min(healTgt.unit.stats.hp, healTgt.hp + Math.max(20, Math.round(worst * 0.5)));
+        const from = e.pos; e.pos = healTile;
+        const done = heal - healTgt.hp; healTgt.hp = heal;
+        moves.push({ id: e.id, name: e.unit.hero.name, from, to: healTile, target: healTgt.id, heal: done });
+        continue; // le soigneur a agi
+      }
+    }
 
     // Meilleure (case, cible) d'attaque.
     let best: Option | null = null;
