@@ -1180,7 +1180,22 @@ function MapGrid({
           image de la carte en fond
         </label>
       ) : null}
-      <div className="relative">
+      {/* Repères : lettres (colonnes) au-dessus, numéros (lignes) à gauche. */}
+      <div className="flex">
+        <span className="shrink-0" style={{ width: 13 }} />
+        <div className="grid flex-1 gap-[2px]" style={{ gridTemplateColumns: 'repeat(6, 1fr)' }}>
+          {cols.map((c) => (
+            <div key={c} className="text-center text-[8.5px] font-bold uppercase text-warm-mute/70">{c}</div>
+          ))}
+        </div>
+      </div>
+      <div className="flex">
+        <div className="mr-[2px] flex shrink-0 flex-col gap-[2px]" style={{ width: 13 }}>
+          {rows.map((r) => (
+            <div key={r} className="flex flex-1 items-center justify-center text-[8.5px] font-bold text-warm-mute/70">{r}</div>
+          ))}
+        </div>
+        <div className="relative flex-1">
         {bg ? (
           <img src={imgUrl} alt="" className="pointer-events-none absolute inset-0 h-full w-full rounded-[4px] object-cover opacity-90" />
         ) : null}
@@ -1258,6 +1273,7 @@ function MapGrid({
             );
           }),
         )}
+        </div>
         </div>
       </div>
       <div className="mt-1.5 flex flex-wrap items-center justify-center gap-x-3 gap-y-0.5 text-[9.5px] text-warm-mute">
