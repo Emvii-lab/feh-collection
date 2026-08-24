@@ -4,6 +4,7 @@
 // ou renseignés à la main (bonus en combat, doublon, réduction, vantage).
 import type { Color, Hero, Stats, WeaponType } from '../types';
 import type { CollStats } from './collection';
+import type { SpecialInfo } from './skillEffects';
 
 const RANGED: Set<string> = new Set(['Bow', 'Dagger', 'Tome', 'Staff']);
 const MAGICAL: Set<string> = new Set(['Tome', 'Staff', 'Dragon']);
@@ -49,6 +50,7 @@ export type CombatMods = {
   pierceFoeReduction: boolean; // annule la réduction de dégâts de l'adversaire
   dmgReductionPct: number; // % de réduction des dégâts SUBIS (0-100)
   flatDmgReduction: number; // réduction FIXE des dégâts subis (par coup)
+  special: SpecialInfo; // spéciale équipée (jauge simulée)
   vantage: boolean; // en défense : frappe en premier
 };
 
@@ -57,7 +59,8 @@ export const NO_MODS: CombatMods = {
   bonusDamage: 0, bonusDamageStat: { atk: 0, spd: 0, def: 0, res: 0, hp: 0 },
   guaranteedFollowup: false, noFollowup: false, cannotBeDoubled: false,
   counterAnyRange: false, preventFoeCounter: false, neutralizeFoeBonuses: false,
-  pierceFoeReduction: false, dmgReductionPct: 0, flatDmgReduction: 0, vantage: false,
+  pierceFoeReduction: false, dmgReductionPct: 0, flatDmgReduction: 0,
+  special: { maxCd: 0, kind: 'none' }, vantage: false,
 };
 
 export type Unit = { hero: Hero; stats: Stats; mods: CombatMods };
@@ -96,7 +99,13 @@ function effMod(u: Unit, foe: Unit, k: 'atkBuff' | 'spdBuff' | 'defBuff' | 'resB
   return foe.mods.neutralizeFoeBonuses ? Math.min(0, v) : v;
 }
 
-export function computeHit(atk: Unit, def: Unit): HitResult {
+// Dégâts d'UN coup (une frappe). `offense` = spéciale offensive déclenchée sur ce
+// coup ; `defReducePct` = réduction de la spéciale DÉFENSIVE du défenseur si elle
+// se déclenche sur ce coup. Renvoie aussi les méta pour l'affichage.
+type StrikeMeta = { dmg: number; adv: 1 | 0 | -1; targetsRes: boolean; effective: boolean };
+function strikeDamage(
+  atk: Unit, def: Unit, offense: SpecialInfo | null, defReducePct: number,
+): StrikeMeta {
   const adv = triangle(atk.hero.color, def.hero.color);
   let a = atk.stats.atk + effMod(atk, def, 'atkBuff');
   const mod = Math.trunc(a * 0.2);
@@ -104,32 +113,33 @@ export function computeHit(atk: Unit, def: Unit): HitResult {
   const effective = isEffective(atk, def);
   if (effective) a = Math.trunc(a * 1.5);
   const useRes = targetsRes(atk.hero.weaponType);
-  const mit = useRes
+  let mit = useRes
     ? def.stats.res + effMod(def, atk, 'resBuff')
     : def.stats.def + effMod(def, atk, 'defBuff');
+  if (offense?.defIgnorePct) mit = mit - Math.trunc(mit * offense.defIgnorePct / 100);
   let dmg = Math.max(0, a - mit);
-  dmg += atk.mods.bonusDamage || 0; // dégâts fixes ajoutés (ex. « = compteur × N »)
-  dmg += statBonusDamage(atk, def); // dégâts = % d'une stat
+  dmg += atk.mods.bonusDamage || 0; // dégâts fixes (ex. « = compteur × N »)
+  dmg += statBonusDamage(atk, def); // dégâts = % d'une stat (toujours actifs)
+  if (offense?.addStatPct) {
+    dmg += Math.trunc(statVal(atk, def, offense.addStatPct.stat) * offense.addStatPct.pct / 100);
+  }
+  if (offense?.addDamagePct) dmg = Math.round(dmg * (1 + offense.addDamagePct / 100));
   const pierce = atk.mods.pierceFoeReduction;
   if (!pierce && def.mods.dmgReductionPct > 0) {
-    dmg = Math.max(0, Math.round(dmg * (1 - def.mods.dmgReductionPct / 100)));
+    dmg = Math.round(dmg * (1 - def.mods.dmgReductionPct / 100));
   }
-  if (!pierce && def.mods.flatDmgReduction > 0) {
-    dmg = Math.max(0, dmg - def.mods.flatDmgReduction); // réduction FIXE après le %
-  }
-  // Doublon : garanti, ou VIT (avec bonus) ≥ +5, sauf "noFollowup" / "cannotBeDoubled".
-  const spdOk =
-    (atk.stats.spd + effMod(atk, def, 'spdBuff')) -
-      (def.stats.spd + effMod(def, atk, 'spdBuff')) >=
-    5;
-  const canDouble =
-    !atk.mods.noFollowup && !def.mods.cannotBeDoubled &&
-    (atk.mods.guaranteedFollowup || spdOk);
-  const hits = (canDouble ? 2 : 1) * (atk.mods.brave ? 2 : 1);
-  return { dmg, hits, total: dmg * hits, adv, targetsRes: useRes, effective };
+  if (!pierce && defReducePct > 0) dmg = Math.round(dmg * (1 - defReducePct / 100)); // spéciale déf.
+  if (!pierce && def.mods.flatDmgReduction > 0) dmg = dmg - def.mods.flatDmgReduction;
+  return { dmg: Math.max(0, dmg), adv, targetsRes: useRes, effective };
 }
 
-// Dégâts bonus = pourcentage d'une stat du porteur (Spd/Def/Res/Atk/HP).
+// Valeur effective d'une stat (base + bonus) pour les dégâts « = % de la stat ».
+function statVal(u: Unit, foe: Unit, stat: 'atk' | 'spd' | 'def' | 'res' | 'hp'): number {
+  if (stat === 'hp') return u.stats.hp;
+  return u.stats[stat] + effMod(u, foe, (stat + 'Buff') as 'atkBuff');
+}
+
+// Dégâts bonus = pourcentage d'une stat du porteur (toujours actifs, hors spéciale).
 function statBonusDamage(atk: Unit, def: Unit): number {
   const p = atk.mods.bonusDamageStat;
   if (!p) return 0;
@@ -142,6 +152,14 @@ function statBonusDamage(atk: Unit, def: Unit): number {
     val(atk.stats.res, effMod(atk, def, 'resBuff'), p.res) +
     val(atk.stats.hp, 0, p.hp)
   );
+}
+
+// L'unité U double-t-elle V ? (VIT +5, ou garanti ; sauf empêchements).
+function doubles(u: Unit, v: Unit): boolean {
+  if (u.mods.noFollowup) return false;
+  if (v.mods.cannotBeDoubled) return false;
+  if (u.mods.guaranteedFollowup) return true;
+  return (u.stats.spd + effMod(u, v, 'spdBuff')) - (v.stats.spd + effMod(v, u, 'spdBuff')) >= 5;
 }
 
 export function canCounter(attacker: Unit, defender: Unit): boolean {
@@ -159,43 +177,71 @@ export type Sim = {
   vantage: boolean; // le défenseur a riposté en premier
 };
 
-// Échange : gestion du Vantage (le défenseur frappe en premier s'il peut contrer).
-export function simulate(attacker: Unit, defender: Unit): Sim {
-  const counters = canCounter(attacker, defender);
-  const vantage = counters && defender.mods.vantage;
+// État d'un combattant pendant l'échange (PV + jauge de spéciale).
+type Fighter = {
+  u: Unit;
+  hp: number;
+  spec: SpecialInfo | null;
+  charge: number; // compteur courant (0 = prête). Infinity = pas de spéciale.
+  dmgTotal: number;
+  hitCount: number;
+  first: StrikeMeta | null;
+};
+function mkFighter(u: Unit): Fighter {
+  const s = u.mods.special && u.mods.special.kind !== 'none' && u.mods.special.maxCd > 0
+    ? u.mods.special : null;
+  return { u, hp: u.stats.hp, spec: s, charge: s ? s.maxCd : Infinity, dmgTotal: 0, hitCount: 0, first: null };
+}
 
-  if (vantage) {
-    // Le défenseur frappe d'abord.
-    const c = computeHit(defender, attacker);
-    const atkHp = attacker.stats.hp - c.total;
-    if (atkHp <= 0) {
-      // L'attaquant tombe avant d'agir.
-      return {
-        atk: { dmg: 0, hits: 0, total: 0, adv: 0, targetsRes: false, effective: false },
-        defHpAfter: defender.stats.hp, ko: false,
-        counter: { ...c, atkHpAfter: 0, atkKo: true }, vantage: true,
-      };
+// Une frappe (ou 2 si Brave) de S vers R, en gérant la jauge de spéciale.
+function doStrike(S: Fighter, R: Fighter) {
+  const n = S.u.mods.brave ? 2 : 1;
+  for (let i = 0; i < n; i++) {
+    if (S.hp <= 0 || R.hp <= 0) return;
+    // Spéciale OFFENSIVE de S : se déclenche si la jauge est à 0 au moment de frapper.
+    let offense: SpecialInfo | null = null;
+    if (S.spec && S.spec.kind === 'offense' && S.charge === 0) {
+      offense = S.spec; S.charge = S.spec.maxCd;
     }
-    const a = computeHit(attacker, defender);
-    return {
-      atk: a, defHpAfter: Math.max(0, defender.stats.hp - a.total),
-      ko: defender.stats.hp - a.total <= 0,
-      counter: { ...c, atkHpAfter: Math.max(0, atkHp), atkKo: false },
-      vantage: true,
-    };
+    // Spéciale DÉFENSIVE de R : réduit ce coup si sa jauge est à 0 quand il est touché.
+    let defReduce = 0, defFired = false;
+    if (R.spec && R.spec.kind === 'defense' && R.charge === 0) {
+      defReduce = R.spec.reducePct || 0; defFired = true; R.charge = R.spec.maxCd;
+    }
+    const res = strikeDamage(S.u, R.u, offense, defReduce);
+    R.hp -= res.dmg;
+    S.dmgTotal += res.dmg; S.hitCount++;
+    if (!S.first) S.first = res;
+    // Charge : +1 pour S qui frappe, +1 pour R qui est touché (sauf si déclenchée à l'instant).
+    if (!offense && S.spec) S.charge = Math.max(0, S.charge - 1);
+    if (!defFired && R.spec) R.charge = Math.max(0, R.charge - 1);
   }
+}
 
-  // Cas normal : l'attaquant initie.
-  const a = computeHit(attacker, defender);
-  const defHp = defender.stats.hp - a.total;
-  const ko = defHp <= 0;
-  let counter: Sim['counter'] = null;
-  if (!ko && counters) {
-    const c = computeHit(defender, attacker);
-    const atkHp = attacker.stats.hp - c.total;
-    counter = { ...c, atkHpAfter: Math.max(0, atkHp), atkKo: atkHp <= 0 };
-  }
-  return { atk: a, defHpAfter: Math.max(0, defHp), ko, counter, vantage: false };
+// Échange complet, coup par coup (jauge de spéciale + Vantage + doublons).
+export function simulate(attacker: Unit, defender: Unit): Sim {
+  const A = mkFighter(attacker);
+  const D = mkFighter(defender);
+  const canCtr = canCounter(attacker, defender);
+  const vantage = canCtr && defender.mods.vantage;
+  const aDouble = doubles(attacker, defender);
+  const dDouble = canCtr && doubles(defender, attacker);
+
+  // Ordre des frappes : Vantage = le défenseur riposte en premier.
+  const seq: [Fighter, Fighter][] = vantage
+    ? [[D, A], [A, D], ...(aDouble ? [[A, D] as [Fighter, Fighter]] : []), ...(dDouble ? [[D, A] as [Fighter, Fighter]] : [])]
+    : [[A, D], ...(canCtr ? [[D, A] as [Fighter, Fighter]] : []), ...(aDouble ? [[A, D] as [Fighter, Fighter]] : []), ...(dDouble ? [[D, A] as [Fighter, Fighter]] : [])];
+  for (const [S, R] of seq) if (S.hp > 0 && R.hp > 0) doStrike(S, R);
+
+  const toHit = (f: Fighter): HitResult => ({
+    dmg: f.hitCount ? Math.round(f.dmgTotal / f.hitCount) : 0,
+    hits: f.hitCount, total: f.dmgTotal,
+    adv: f.first?.adv ?? 0, targetsRes: f.first?.targetsRes ?? false, effective: f.first?.effective ?? false,
+  });
+  const counter = D.hitCount > 0
+    ? { ...toHit(D), atkHpAfter: Math.max(0, A.hp), atkKo: A.hp <= 0 }
+    : null;
+  return { atk: toHit(A), defHpAfter: Math.max(0, D.hp), ko: D.hp <= 0, counter, vantage };
 }
 
 // Verdict synthétique pour la vue équipe.

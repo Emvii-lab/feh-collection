@@ -31,6 +31,17 @@ export type ParsedEffects = {
   neutralizeFoeBonuses: boolean; // les bonus de l'adversaire sont annulés
   pierceFoeReduction: boolean; // annule la réduction de dégâts de l'adversaire
   foeAtk: number; foeSpd: number; foeDef: number; foeRes: number; // malus (valeurs positives)
+  special: SpecialInfo; // spéciale équipée (jauge simulée coup par coup)
+};
+
+// Spéciale équipée : compteur + effet au déclenchement (offensive ou défensive).
+export type SpecialInfo = {
+  maxCd: number; // compteur EFFECTIF (avec accélération) — 0 = pas de spéciale modélisée
+  kind: 'offense' | 'defense' | 'none';
+  addStatPct?: { stat: StatKey | 'hp'; pct: number }; // +% d'une stat (Bonfire, Draconic Aura…)
+  addDamagePct?: number; // +% des dégâts dealt (Glimmer/Astra)
+  defIgnorePct?: number; // ignore % de la DÉF/RÉS de l'adversaire (Moonbow/Luna)
+  reducePct?: number; // réduit les dégâts subis de % (défensive : Aegis, Ice Wall…)
 };
 
 const EMPTY = (): ParsedEffects => ({
@@ -41,6 +52,7 @@ const EMPTY = (): ParsedEffects => ({
   noFollowup: false, counterAnyRange: false,
   preventFoeCounter: false, neutralizeFoeBonuses: false, pierceFoeReduction: false,
   foeAtk: 0, foeSpd: 0, foeDef: 0, foeRes: 0,
+  special: { maxCd: 0, kind: 'none' },
 });
 
 // Enlève les accents pour un matching FR/EN uniforme, nettoie le HTML, minuscule.
@@ -154,7 +166,7 @@ function pFlags(d: string, out: ParsedEffects) {
     out.noFollowup = true;
 }
 
-// Compteur MAX de spéciale = cooldown de base de la spéciale équipée.
+// Compteur MAX de spéciale (base) = cooldown de la spéciale équipée (pour les formules).
 function specialMaxCd(skills: SkillRow[]): number {
   let cd = 0;
   for (const s of skills)
@@ -162,12 +174,42 @@ function specialMaxCd(skills: SkillRow[]): number {
   return cd;
 }
 
+// Effet de la spéciale équipée (défensive prioritaire si elle réduit, sinon offensive).
+function parseSpecial(row: SkillRow | null, accel: boolean): SpecialInfo {
+  if (!row || !row.description || (row.cooldown ?? 0) <= 0) return { maxCd: 0, kind: 'none' };
+  const maxCd = Math.max(1, (row.cooldown as number) - (accel ? 1 : 0)); // accélération (Slaying…)
+  const d = clean(row.description);
+  const red = d.match(/reduces damage[^.;]*?by\s*(\d+)\s*%/) || d.match(/reduit les degats[^.;]*?de\s*(\d+)\s*%/);
+  if (red) return { maxCd, kind: 'defense', reducePct: +red[1] };
+  const ign = d.match(/foe'?s?\s*def(?:ense)?(?:\/res(?:istance)?| or res)?[^.;]*?reduced[^.;]*?by\s*(\d+)\s*%/)
+    || d.match(/(?:des?|de la)\s*(?:def|res)[^.;]*?reduite?[^.;]*?de\s*(\d+)\s*%/);
+  if (ign) return { maxCd, kind: 'offense', defIgnorePct: +ign[1] };
+  const st = d.match(/(?:boosts?|adds?|grants?) damage[^.;]*?by\s*(\d+)\s*%\s*of\s*(?:unit'?s?\s*)?(atk|spd|def|res|hp)/)
+    || d.match(/degats[^.;]*?\+\s*(\d+)\s*%\s*(?:des?|de la)\s*(atq|vit|def|res|pv)/);
+  if (st) {
+    const raw = st[2];
+    const stat = raw === 'hp' || raw === 'pv' ? 'hp' : STAT_KEY[raw];
+    if (stat) return { maxCd, kind: 'offense', addStatPct: { stat, pct: +st[1] } };
+  }
+  const dd = d.match(/boosts? damage(?: dealt)? by\s*(\d+)\s*%(?!\s*of)/);
+  if (dd) return { maxCd, kind: 'offense', addDamagePct: +dd[1] };
+  return { maxCd, kind: 'none' }; // spéciale à effet non modélisé (soin, etc.)
+}
+
+const ACCEL_RE = /accelerates special|cooldown count\s*-\s*1|\bslaying\b|time'?s pulse|compteur\s*-\s*1|accelere[^.;]*?special/i;
+
 // Combine les effets de toute une panoplie de compétences.
 export function parseSkillEffects(skills: SkillRow[]): ParsedEffects {
   const out = EMPTY();
-  const cd = specialMaxCd(skills);
+  const cd = specialMaxCd(skills); // base, pour les formules « = compteur × N »
+  const specialRow = skills.find((s) => (s.scategory ?? '').toLowerCase() === 'special') ?? null;
+  const accel = skills.some((s) => s.description && ACCEL_RE.test(s.description));
+  out.special = parseSpecial(specialRow, accel);
   for (const s of skills) {
     if (!s.description) continue;
+    // La description de la SPÉCIALE est gérée par le modèle de jauge (parseSpecial),
+    // pas en réduction/dégâts « toujours actifs » → on ne la relit pas ici (anti-doublon).
+    if ((s.scategory ?? '').toLowerCase() === 'special') continue;
     const d = clean(s.description);
     pFlatBuffs(d, out);
     pSpecialScaledBuff(d, cd, out);

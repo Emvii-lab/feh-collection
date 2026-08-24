@@ -6,6 +6,7 @@ import {
   NO_MODS, type Sim, type Unit, type Verdict,
 } from '../lib/combat';
 import { fetchTeamWeapons, fetchEnemyCombat, EMPTY_EFFECTS, type WeaponInfo, type EnemyCombat } from '../lib/simWeapons';
+import type { SpecialInfo } from '../lib/skillEffects';
 import {
   fetchWikiMap, parsePageTitle, resolveEnemy,
   type WikiEnemy, type WikiMap,
@@ -56,6 +57,7 @@ const pickEffects = (c: EnemyCombat) => ({
   preventFoeCounter: c.preventFoeCounter, neutralizeFoeBonuses: c.neutralizeFoeBonuses,
   pierceFoeReduction: c.pierceFoeReduction,
   foeAtk: c.foeAtk, foeSpd: c.foeSpd, foeDef: c.foeDef, foeRes: c.foeRes,
+  special: c.special,
 });
 const ZERO_EFFECTS = pickEffects(EMPTY_EFFECTS());
 
@@ -70,6 +72,7 @@ type EnemyState = {
   counterAnyRange: boolean; preventFoeCounter: boolean;
   neutralizeFoeBonuses: boolean; pierceFoeReduction: boolean; noFollowup: boolean;
   guaranteedFollowup: boolean; cannotBeDoubled: boolean; vantage: boolean;
+  special: SpecialInfo; // spéciale de l'ennemi (jauge simulée)
   autoNote?: string; // récap des effets auto-appliqués depuis les skills du wiki
 };
 type UnitMods = { atkBuff: number; guaranteedFollowup: boolean; dmgReductionPct: number };
@@ -180,6 +183,12 @@ export function Simulator({
     const st = c.bonusDamageStat;
     const statDmg = (['atk', 'spd', 'def', 'res', 'hp'] as const)
       .filter((k) => st[k]).map((k) => `${st[k]}% ${k.toUpperCase()}`).join('+');
+    const sp = c.special;
+    const specNote = sp.kind === 'defense'
+      ? `spéciale déf. (CD ${sp.maxCd}, −${sp.reducePct}%)`
+      : sp.kind === 'offense'
+        ? `spéciale off. (CD ${sp.maxCd}${sp.defIgnorePct ? `, ignore ${sp.defIgnorePct}% DÉF/RÉS` : sp.addStatPct ? `, +${sp.addStatPct.pct}% ${sp.addStatPct.stat.toUpperCase()}` : sp.addDamagePct ? `, +${sp.addDamagePct}% dégâts` : ''})`
+        : '';
     const parts = [
       b,
       c.bonusDamage ? `+${c.bonusDamage} dégâts/coup` : '',
@@ -192,6 +201,7 @@ export function Simulator({
       c.neutralizeFoeBonuses ? 'annule tes bonus' : '',
       c.pierceFoeReduction ? 'perce ta réduction' : '',
       c.cannotBeDoubled ? 'empêche ton doublon' : '',
+      specNote,
       c.brave ? 'Brave' : '', c.guaranteedFollowup ? 'double garanti' : '',
     ].filter(Boolean);
     setEnemy((e) => ({
@@ -251,6 +261,7 @@ export function Simulator({
     preventFoeCounter: enemy.preventFoeCounter ?? false,
     neutralizeFoeBonuses: enemy.neutralizeFoeBonuses ?? false,
     pierceFoeReduction: enemy.pierceFoeReduction ?? false,
+    special: enemy.special ?? NO_MODS.special,
     vantage: enemy.vantage,
   };
 
@@ -304,7 +315,7 @@ export function Simulator({
         guaranteedFollowup: ef.guaranteedFollowup || pu.guaranteedFollowup,
         cannotBeDoubled: ef.cannotBeDoubled, noFollowup: ef.noFollowup,
         dmgReductionPct: Math.max(ef.dmgReductionPct, pu.dmgReductionPct),
-        flatDmgReduction: ef.flatDmgReduction,
+        flatDmgReduction: ef.flatDmgReduction, special: ef.special,
       },
     };
   };
