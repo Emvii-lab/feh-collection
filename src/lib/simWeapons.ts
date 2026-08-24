@@ -9,6 +9,7 @@ import { fetchBuilds, BUILD_SLOTS } from './builds';
 export type WeaponInfo = {
   effAgainst: string[];
   effects: ParsedEffects; // brave, bonus, dégâts %stat, riposte à distance, etc.
+  hasBuild: boolean; // true = effets lus de ton build équipé (kit exact) ; false = arme seule
 };
 export const EMPTY_EFFECTS = (): ParsedEffects => parseSkillEffects([]);
 
@@ -121,6 +122,7 @@ export async function fetchTeamWeapons(
     out.set(hid, {
       effAgainst: normEff(weaponRow?.weapon_effectiveness ?? null),
       effects: parseSkillEffects(rows as SkillRow[]),
+      hasBuild: true,
     });
   }
 
@@ -136,6 +138,7 @@ export async function fetchTeamWeapons(
       out.set(hid, {
         effAgainst: normEff(best.weapon_effectiveness),
         effects: parseSkillEffects([best as SkillRow]),
+        hasBuild: false,
       });
     }
   }

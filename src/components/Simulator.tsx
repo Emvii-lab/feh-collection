@@ -56,7 +56,7 @@ const EFF_LABEL: Record<string, string> = {
   flying: 'Volant', armored: 'Cuirassé', cavalry: 'Cavalier',
   infantry: 'Fantassin', dragon: 'Dragon', beast: 'Bête',
 };
-const NO_WI: WeaponInfo = { effAgainst: [], effects: EMPTY_EFFECTS() };
+const NO_WI: WeaponInfo = { effAgainst: [], effects: EMPTY_EFFECTS(), hasBuild: false };
 
 // Extrait les effets auto-parsés (ParsedEffects) vers les champs de l'ennemi.
 const pickEffects = (c: EnemyCombat) => ({
@@ -1283,6 +1283,11 @@ function UnitRow({
             {hero.name} <span className="text-warm-mute">— {hero.title}</span>
           </span>
         </button>
+        {weaponInfo?.hasBuild ? (
+          <span title="Build enregistré : kit exact" className="shrink-0 rounded bg-emerald-500/25 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-200">build</span>
+        ) : (
+          <span title="Estimation depuis l'arme seule (pas de build enregistré)" className="shrink-0 rounded bg-white/10 px-1.5 py-0.5 text-[9px] text-warm-mute">arme</span>
+        )}
         <span className={`shrink-0 rounded-md border px-2 py-0.5 font-feh text-[11px] ${v.cls}`}>{v.label}</span>
         <button type="button" onClick={onToggle} className="shrink-0 text-warm-mute hover:text-warm-dim" title="Détails">
           {expanded ? '▴' : '▾'}
