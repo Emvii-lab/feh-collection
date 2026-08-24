@@ -452,19 +452,35 @@ export function Simulator({
     setSearchRes(null);
     setSearchProg({ tested: 0, total: 0 });
     try {
-      const rosterIds = roster.map((h) => h.id);
-      const wmap = await fetchTeamWeapons(rosterIds, userId);
-      const pool: SearchUnit[] = roster
-        .map((h): SearchUnit | null => {
-          const s = resolveStats(h, stats.get(h.id));
-          if (!s) return null;
-          const wi = wmap.get(h.id) ?? NO_WI;
-          const hero = { id: h.id, name: h.name, title: h.title, color: h.color, weaponType: h.weaponType, moveType: h.moveType, rarity: 5, origin: '' } as Hero;
-          return { id: h.id, name: h.name, title: h.title, unit: { hero, stats: s, mods: toMods(wi.effects, wi.effAgainst) } };
-        })
-        .filter((x): x is SearchUnit => x !== null);
-
       const foes = wikiMap.difficulties[wikiDiff] ?? [];
+
+      // Pré-filtre RAPIDE (stats seules, sans base de données) : on classe grossièrement
+      // les candidats face au boss et on ne récupère les effets que des ~18 meilleurs.
+      const boss = foes.reduce((a, b) => (b.hp > a.hp ? b : a), foes[0]);
+      const MAGIC = /Tome|Staff|Dragon/;
+      const bossMagic = boss ? MAGIC.test(resolveEnemy(boss, heroByName).weaponType) : false;
+      type St = { atk: number; spd: number; def: number; res: number; hp: number };
+      const prefScore = (h: Hero, s: St): number => {
+        if (!boss) return s.atk + s.spd + s.def + s.res;
+        const mit = MAGIC.test(h.weaponType) ? boss.res : boss.def;
+        const dmg = Math.max(0, s.atk - mit);
+        const surv = (bossMagic ? s.res : s.def) + s.hp - boss.atk;
+        return dmg * 2 + Math.max(0, surv);
+      };
+      const ranked = roster
+        .map((h) => ({ h, s: resolveStats(h, stats.get(h.id)) }))
+        .filter((x): x is { h: Hero; s: St } => x.s !== null)
+        .map((x) => ({ ...x, sc: prefScore(x.h, x.s) }))
+        .sort((a, b) => b.sc - a.sc)
+        .slice(0, 18);
+
+      const wmap = await fetchTeamWeapons(ranked.map((x) => x.h.id), userId);
+      const pool: SearchUnit[] = ranked.map(({ h, s }) => {
+        const wi = wmap.get(h.id) ?? NO_WI;
+        const hero = { id: h.id, name: h.name, title: h.title, color: h.color, weaponType: h.weaponType, moveType: h.moveType, rarity: 5, origin: '' } as Hero;
+        return { id: h.id, name: h.name, title: h.title, unit: { hero, stats: s, mods: toMods(wi.effects, wi.effAgainst) } };
+      });
+
       const passive = /passive/i.test(wikiMap.globalai);
       const linked = /linked/i.test(wikiMap.globalai);
       const edits = load<TerrainMap>('feh.sim.terrain.' + wikiMap.title, {});
