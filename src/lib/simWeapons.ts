@@ -42,10 +42,17 @@ const effMight = (might: number | null, desc: string | null) =>
 // les formules « ×/+ compteur de spéciale » et les malus infligés à ton unité.
 export type EnemyCombat = ParsedEffects;
 
+// Le wiki écrit les préfixes de stats avec un « / » (« Atk/Res Aria ») alors que la base
+// les stocke collés (« AtkRes Aria »). On interroge les DEUX formes pour ne rien rater.
+const STAT_TOK = '(?:Atk|Spd|Def|Res|HP)';
+const deslashName = (n: string) =>
+  n.replace(new RegExp(`\\b(${STAT_TOK})/(${STAT_TOK})`, 'g'), '$1$2');
+
 // Combine les effets de toutes les compétences d'un ennemi (noms anglais du wiki).
 export async function fetchEnemyCombat(skillNames: string[]): Promise<EnemyCombat> {
-  const names = skillNames.filter(Boolean);
-  if (!supabase || names.length === 0) return parseSkillEffects([]);
+  const base = skillNames.filter(Boolean);
+  if (!supabase || base.length === 0) return parseSkillEffects([]);
+  const names = [...new Set(base.flatMap((n) => [n, deslashName(n)]))];
   const { data } = await supabase
     .from('skills')
     .select('description, scategory, cooldown')

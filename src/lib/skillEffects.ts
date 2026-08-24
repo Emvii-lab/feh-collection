@@ -55,9 +55,15 @@ const EMPTY = (): ParsedEffects => ({
   special: { maxCd: 0, kind: 'none' },
 });
 
-// Enlève les accents pour un matching FR/EN uniforme, nettoie le HTML, minuscule.
+// Enlève le HTML + les parenthèses d'EXEMPLE (qui contiennent des nombres illustratifs
+// « (Example: … grants Atk+14 …) » à ne PAS lire comme de vrais bonus), déaccentue, minuscule.
+// On ne retire QUE les exemples : les autres parenthèses (« (cooldown count-1) »,
+// « (excluding area-of-effect Specials) ») restent, car elles servent à d'autres détections.
 const clean = (s: string) =>
-  s.replace(/<[^>]*>/g, ' ').normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  s
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\((?:example|exemple|e\.g\.|ex\.)[^)]*\)/gi, ' ')
+    .normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
 const STAT_KEY: Record<string, StatKey> = {
   atk: 'atk', atq: 'atk', spd: 'spd', vit: 'spd', def: 'def', res: 'res',

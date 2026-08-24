@@ -501,10 +501,10 @@ export function Simulator({
                       <p className="mt-1.5 text-[10.5px] text-warm-mute/80">
                         Clique un ennemi → ses <strong className="text-warm-dim">stats</strong> se remplissent (couleur/arme ajustables).
                       </p>
-                      <p className="mt-1 text-[10.5px] text-amber-300/80">
-                        ⚠️ Ses <strong>compétences fixes</strong> (bonus, réduction %, Brave…) sont auto-appliquées,
-                        mais <strong>pas les effets à formules</strong> (liés à la jauge de spéciale, aux PV…) — un boss
-                        peut donc rester plus fort en jeu. Ajuste au besoin via « Compétences ▾ ».
+                      <p className="mt-1 text-[10.5px] text-emerald-300/80">
+                        ✓ Ses <strong>compétences sont auto-appliquées</strong> : bonus, dégâts (fixes/%stat),
+                        réduction, coupe-riposte, neutralisation, malus, et sa <strong>spéciale</strong> (jauge simulée).
+                        Reste peu capté : effets conditionnels (PV, position). Ajuste au besoin via « Compétences ▾ ».
                       </p>
                     </div>
                   ) : null}
