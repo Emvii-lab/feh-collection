@@ -87,6 +87,7 @@ export function solve(
     seen.add(key);
     for (const pp of playerPhases(b)) {
       if (nodes > budget) return false;
+      if (Date.now() > deadline) { timedOut = true; return false; } // arrêt net sur le temps
       if (!allowDeaths && boardSummary(pp.board).lostUnit) continue; // mort en riposte
       const ep = enemyPhase(pp.board);
       if (!allowDeaths && boardSummary(ep.board).lostUnit) continue; // mort en phase ennemie
