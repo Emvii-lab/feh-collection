@@ -11,6 +11,9 @@ import {
   fetchWikiMap, parsePageTitle, resolveEnemy,
   type WikiEnemy, type WikiMap,
 } from '../lib/wikiMap';
+import {
+  reachable, attackFrom, threatZone, moveAllowance, weaponRange,
+} from '../lib/tactics';
 
 // Persistance légère (équipe + carte ennemie) entre les ouvertures / rechargements.
 const load = <T,>(key: string, fallback: T): T => {
@@ -652,6 +655,8 @@ const shortLabel = (n: string) =>
   n.replace(/[^A-Za-z ]/g, '').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
 
 // Grille tactique 6×8 (comme le wiki) : ennemis placés + cases de départ alliées.
+// Couche A : sélectionne un de tes persos pour voir sa portée de déplacement, les
+// cases d'où il frappe l'ennemi choisi, et la zone de menace de cet ennemi.
 function MapGrid({
   enemies, allyPos, team, selectedPos, heroByName, onPick,
 }: {
@@ -666,8 +671,65 @@ function MapGrid({
   const allyOrder = allyPos.map((p) => p.toLowerCase()); // ordonné : 1re case → 1er perso
   const cols = ['a', 'b', 'c', 'd', 'e', 'f'];
   const rows = [8, 7, 6, 5, 4, 3, 2, 1]; // rangée 8 en haut (camp ennemi)
+
+  const [selAlly, setSelAlly] = useState<number | null>(null);
+  const [showThreat, setShowThreat] = useState(true);
+  // Alliés effectivement posés sur une case de départ.
+  const placed = team
+    .map((h, i) => ({ hero: h, idx: i, pos: allyOrder[i] }))
+    .filter((p) => p.pos);
+
+  const enemyPos = new Set(enemies.map((e) => e.pos.toLowerCase()));
+  const allyPosSet = new Set(placed.map((p) => p.pos));
+  const occupied = new Set([...enemyPos, ...allyPosSet]);
+
+  // Portée + cases d'attaque de l'allié sélectionné.
+  let reachSet = new Set<string>();
+  let attackSet = new Set<string>();
+  const sel = selAlly != null ? placed.find((p) => p.idx === selAlly) : undefined;
+  if (sel) {
+    reachSet = reachable(sel.pos, moveAllowance(sel.hero.moveType), enemyPos);
+    if (selectedPos) {
+      attackSet = attackFrom(reachSet, selectedPos, weaponRange(sel.hero.weaponType), occupied);
+    }
+  }
+  // Zone de menace de l'ennemi sélectionné.
+  let threatSet = new Set<string>();
+  if (showThreat && selectedPos) {
+    const se = enemyAt.get(selectedPos);
+    if (se) {
+      const r = resolveEnemy(se, heroByName);
+      const blocked = new Set([...allyPosSet, ...[...enemyPos].filter((p) => p !== selectedPos)]);
+      threatSet = threatZone(selectedPos, moveAllowance(r.moveType), weaponRange(r.weaponType), blocked);
+    }
+  }
+
   return (
     <div className="mx-auto mt-2 w-full max-w-[288px]">
+      {placed.length ? (
+        <div className="mb-1.5 flex flex-wrap items-center justify-center gap-1">
+          <span className="text-[9.5px] text-warm-mute">Positionner :</span>
+          {placed.map((p) => (
+            <button
+              key={p.idx}
+              type="button"
+              onClick={() => setSelAlly((s) => (s === p.idx ? null : p.idx))}
+              title={p.hero.name}
+              className={`rounded px-1.5 py-0.5 text-[10px] font-semibold transition ${
+                selAlly === p.idx
+                  ? 'bg-amber-400/80 text-black'
+                  : 'bg-black/40 text-warm-dim hover:bg-black/60'
+              }`}
+            >
+              {shortLabel(p.hero.name)}
+            </button>
+          ))}
+          <label className="ml-1 flex items-center gap-1 text-[9.5px] text-warm-mute">
+            <input type="checkbox" checked={showThreat} onChange={(e) => setShowThreat(e.target.checked)} className="h-3 w-3 accent-red-400" />
+            menace
+          </label>
+        </div>
+      ) : null}
       <div className="grid gap-[2px]" style={{ gridTemplateColumns: 'repeat(6, 1fr)' }}>
         {rows.flatMap((r) =>
           cols.map((c) => {
@@ -677,12 +739,20 @@ function MapGrid({
             const isAlly = allyIdx >= 0;
             const ally = isAlly ? team[allyIdx] : undefined; // ton perso posé sur cette case
             const hero = en ? heroByName(en.name) : undefined;
+            const isAttack = attackSet.has(pos);
+            const isReach = reachSet.has(pos) && !isAttack;
+            const isThreat = threatSet.has(pos);
+            const tint = isAttack
+              ? 'bg-amber-400/35'
+              : isReach
+                ? 'bg-sky-500/20'
+                : isAlly ? 'bg-sky-500/10' : 'bg-black/25';
             return (
               <div
                 key={pos}
                 className={`relative aspect-square rounded-[3px] border ${
-                  isAlly ? 'border-sky-400/40 bg-sky-500/10' : 'border-white/[0.06] bg-black/25'
-                }`}
+                  isAlly ? 'border-sky-400/40' : 'border-white/[0.06]'
+                } ${tint} ${isThreat ? 'shadow-[inset_0_0_0_2px_rgba(248,113,113,0.55)]' : ''}`}
               >
                 {en ? (
                   <button
@@ -726,10 +796,14 @@ function MapGrid({
           }),
         )}
       </div>
-      <div className="mt-1 flex items-center justify-center gap-3 text-[9.5px] text-warm-mute">
-        <span><span className="text-sky-300">▲</span> départ allié</span>
-        <span>· rangée 8 (haut) = ennemis</span>
+      <div className="mt-1.5 flex flex-wrap items-center justify-center gap-x-3 gap-y-0.5 text-[9.5px] text-warm-mute">
+        <span><span className="inline-block h-2 w-2 rounded-[1px] bg-sky-500/40 align-middle" /> déplacement</span>
+        <span><span className="inline-block h-2 w-2 rounded-[1px] bg-amber-400/60 align-middle" /> d'ici tu frappes</span>
+        <span><span className="inline-block h-2 w-2 rounded-[1px] align-middle shadow-[inset_0_0_0_2px_rgba(248,113,113,0.7)]" /> menacé</span>
       </div>
+      <p className="mt-0.5 text-center text-[9px] text-warm-mute/70">
+        Sans terrain (murs/forêts) ni déplacements spéciaux : repère visuel, pas une garantie.
+      </p>
     </div>
   );
 }
