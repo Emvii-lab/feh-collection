@@ -890,7 +890,7 @@ export function Simulator({
                             title="Classe TOUS les héros du jeu (stats du wiki) selon leur tenue en duel face au boss"
                             className="rounded-lg border border-violet-300/40 bg-violet-500/20 px-3 py-1.5 font-feh text-[12px] font-semibold text-violet-100 transition hover:bg-violet-500/30 disabled:opacity-60"
                           >
-                            {tcRunning ? '⏳ analyse…' : '🔮 Meilleurs héros (tout le jeu)'}
+                            {tcRunning ? '⏳ analyse…' : '🔮 Meilleure équipe (tout le jeu)'}
                           </button>
                           {searching ? (
                             <button
@@ -962,7 +962,7 @@ export function Simulator({
                           )
                         ) : (
                           <p className="mt-1.5 text-[10px] text-warm-mute/70">
-                            <strong>Équipe (ta collection)</strong> : cherche une équipe gagnante parmi tes persos. <strong>Meilleurs héros</strong> : classe TOUS les héros du jeu selon leur tenue en duel face au boss (qui viser/monter).
+                            <strong>Équipe (ta collection)</strong> : cherche une équipe gagnante parmi tes persos. <strong>Meilleure équipe (tout le jeu)</strong> : compose la meilleure équipe parmi TOUS les héros du jeu face à ce boss (qui viser/monter).
                           </p>
                         )}
 
@@ -970,26 +970,40 @@ export function Simulator({
                         {tcRunning ? (
                           <p className="mt-2 text-[11px] text-violet-200/80">⏳ Analyse des ~40 meilleurs héros du jeu face au boss…</p>
                         ) : tcRows ? (
-                          tcRows.length ? (
-                            <div className="mt-2 text-[11.5px]">
-                              <p className="font-feh font-semibold text-violet-200">🔮 Héros du jeu qui gèrent le boss (duel 1v1) :</p>
-                              <ol className="mt-1 grid grid-cols-1 gap-0.5 sm:grid-cols-2">
-                                {tcRows.map((r, i) => (
-                                  <li key={r.id} className="flex items-center gap-1.5 rounded bg-black/25 px-2 py-0.5">
-                                    <span className="w-3.5 shrink-0 text-right text-[9px] text-warm-mute">{i + 1}</span>
-                                    <span className="min-w-0 flex-1 truncate text-warm-dim">
-                                      {r.name} <span className="text-[9px] text-warm-mute">{r.title}</span>
-                                    </span>
-                                    <span className={`shrink-0 rounded border px-1 text-[8px] ${VERDICT_META[r.verdict].cls}`}>{VERDICT_META[r.verdict].label}</span>
-                                    <span className="shrink-0 text-[8.5px] text-warm-mute">RÉS {r.res} · PV {r.hp}</span>
-                                  </li>
-                                ))}
-                              </ol>
-                              <p className="mt-1 text-[9.5px] text-warm-mute/70">
-                                Duel 1v1 vs le boss, chaque héros en <strong>5★ neutre + meilleure arme</strong> (sans merges/IV/passifs → prudent). Compose une équipe avec ceux qui « <span className="text-emerald-300/80">Le tue</span> » / « Survit ». Ça dit <strong>qui viser</strong>, pas un clear garanti.
-                              </p>
-                            </div>
-                          ) : (
+                          tcRows.length ? (() => {
+                            // Compose l'équipe : top 4, en garantissant un « finisher » (qui tue le boss).
+                            let squad = tcRows.slice(0, 4);
+                            if (!squad.some((r) => r.verdict === 'ko')) {
+                              const k = tcRows.find((r) => r.verdict === 'ko');
+                              if (k) squad = [k, ...tcRows.filter((r) => r.id !== k.id).slice(0, 3)];
+                            }
+                            const ids = new Set(squad.map((r) => r.id));
+                            const alts = tcRows.filter((r) => !ids.has(r.id)).slice(0, 8);
+                            return (
+                              <div className="mt-2 text-[11.5px]">
+                                <p className="font-feh font-semibold text-violet-200">🔮 Meilleure équipe pour cette carte :</p>
+                                <ul className="mt-1 space-y-0.5">
+                                  {squad.map((r) => (
+                                    <li key={r.id} className="flex items-center gap-1.5 rounded bg-violet-500/10 px-2 py-1">
+                                      <span className="min-w-0 flex-1 truncate font-feh text-warm-text">
+                                        {r.name} <span className="text-[9px] text-warm-mute">— {r.title}</span>
+                                      </span>
+                                      <span className={`shrink-0 rounded border px-1 text-[8.5px] ${VERDICT_META[r.verdict].cls}`}>{VERDICT_META[r.verdict].label}</span>
+                                      <span className="shrink-0 text-[8.5px] text-warm-mute">RÉS {r.res} · PV {r.hp}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                                {alts.length ? (
+                                  <p className="mt-1 text-[9.5px] text-warm-mute/80">
+                                    <strong>Alternatives</strong> : {alts.map((r) => r.name).join(', ')}.
+                                  </p>
+                                ) : null}
+                                <p className="mt-1 text-[9.5px] text-warm-mute/70">
+                                  Équipe des 4 héros les mieux placés face au boss (duel 1v1), en <strong>5★ neutre + meilleure arme</strong> (sans merges/IV/passifs → prudent). C'est la meilleure équipe <strong>recommandée</strong> ; je ne prouve pas le clear coup par coup (mon solveur n'y arrive pas sur les cartes dures).
+                                </p>
+                              </div>
+                            );
+                          })() : (
                             <p className="mt-2 text-[11.5px] text-amber-300/90">Aucun héros exploitable (stats manquantes).</p>
                           )
                         ) : null}
