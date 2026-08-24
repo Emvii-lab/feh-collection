@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { Color, Hero, WeaponType } from '../types';
 import type { CollStats } from '../lib/collection';
 import {
-  resolveStats, simulate, verdictOf,
+  resolveStats, combatVerdict,
   NO_MODS, type Sim, type Unit, type Verdict,
 } from '../lib/combat';
 import { fetchTeamWeapons, fetchEnemyCombat, EMPTY_EFFECTS, type WeaponInfo, type EnemyCombat } from '../lib/simWeapons';
@@ -79,8 +79,8 @@ type UnitMods = { atkBuff: number; guaranteedFollowup: boolean; dmgReductionPct:
 
 const VERDICT_META: Record<Verdict, { label: string; cls: string; order: number }> = {
   ko: { label: 'K.O. la carte', cls: 'border-emerald-400/40 bg-emerald-500/15 text-emerald-200', order: 0 },
-  win: { label: 'Gagne l’échange', cls: 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200/90', order: 1 },
-  trade: { label: 'Échange (les 2 vivent)', cls: 'border-gold-deep/40 bg-black/25 text-gold-text', order: 2 },
+  win: { label: 'Survit (ne le tue pas)', cls: 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200/90', order: 1 },
+  trade: { label: 'Survit, chip', cls: 'border-gold-deep/40 bg-black/25 text-gold-text', order: 2 },
   lose: { label: 'Se fait tuer', cls: 'border-red-400/40 bg-red-500/15 text-red-200', order: 3 },
 };
 
@@ -326,8 +326,8 @@ export function Simulator({
       .map((id) => {
         const u = buildUnit(id);
         if (!u) return null;
-        const sim = simulate(u, enemyUnit);
-        return { id, unit: u, sim, verdict: verdictOf(sim) };
+        const { verdict, player, foe } = combatVerdict(u, enemyUnit);
+        return { id, unit: u, sim: player, foe, verdict };
       })
       .filter((r): r is NonNullable<typeof r> => r !== null)
       .sort((a, b) => VERDICT_META[a.verdict].order - VERDICT_META[b.verdict].order);
@@ -617,7 +617,7 @@ export function Simulator({
           <div className="space-y-2">
             {results.map((r) => (
               <UnitRow
-                key={r.id} hero={r.unit.hero} sim={r.sim} verdict={r.verdict}
+                key={r.id} hero={r.unit.hero} sim={r.sim} foe={r.foe} verdict={r.verdict}
                 enemy={enemyUnit} unit={r.unit}
                 expanded={expanded === r.id}
                 onToggle={() => setExpanded((x) => (x === r.id ? null : r.id))}
@@ -735,9 +735,9 @@ function MapGrid({
 }
 
 function UnitRow({
-  hero, sim, verdict, enemy, unit, expanded, onToggle, onRemove, mods, onMods, weaponInfo,
+  hero, sim, foe, verdict, enemy, unit, expanded, onToggle, onRemove, mods, onMods, weaponInfo,
 }: {
-  hero: Hero; sim: Sim; verdict: Verdict; enemy: Unit; unit: Unit;
+  hero: Hero; sim: Sim; foe: Sim | null; verdict: Verdict; enemy: Unit; unit: Unit;
   expanded: boolean; onToggle: () => void; onRemove: () => void;
   mods: UnitMods; onMods: (m: UnitMods) => void; weaponInfo?: WeaponInfo;
 }) {
@@ -765,7 +765,16 @@ function UnitRow({
       </div>
       {expanded ? (
         <div className="border-t border-white/10 bg-black/20 p-3">
+          <p className="mb-1 font-feh text-[11px] font-semibold text-gold-text/90">⚔️ Ta phase (tu attaques)</p>
           <Result sim={sim} atk={unit} def={enemy} />
+          {foe ? (
+            <>
+              <p className="mb-1 mt-3 font-feh text-[11px] font-semibold text-amber-300/85">
+                🛡️ Phase ennemie ({enemy.hero.name} t'attaque)
+              </p>
+              <Result sim={foe} atk={enemy} def={unit} />
+            </>
+          ) : null}
           <div className="mt-3 space-y-1.5 border-t border-white/10 pt-2 text-[11.5px]">
             {weaponInfo ? (
               <p className="text-emerald-300/80">

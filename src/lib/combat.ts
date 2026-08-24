@@ -252,3 +252,19 @@ export function verdictOf(sim: Sim): Verdict {
   if (sim.counter && sim.counter.total > 0) return 'trade'; // survit, l'ennemi aussi
   return 'win'; // survit sans (presque) rien prendre
 }
+
+// Verdict SUR DEUX PHASES : ta phase (tu inities) PUIS la phase ennemie (le boss
+// t'attaque). Indispensable face à un boss : un corps-à-corps « gagne l'échange »
+// en attaquant un mage à distance (pas de riposte), mais meurt quand le boss le
+// frappe à la phase ennemie. On suppose que le boss t'attaque s'il n'est pas tué.
+export type PhaseVerdict = { verdict: Verdict; player: Sim; foe: Sim | null };
+export function combatVerdict(you: Unit, enemy: Unit): PhaseVerdict {
+  const player = simulate(you, enemy); // tu inities (ta phase)
+  if (player.ko) return { verdict: 'ko', player, foe: null }; // tu le tues, pas de phase ennemie
+  if (player.counter?.atkKo) return { verdict: 'lose', player, foe: null }; // sa riposte te tue
+  const foe = simulate(enemy, you); // le boss initie (phase ennemie)
+  if (foe.ko) return { verdict: 'lose', player, foe }; // il te tue à sa phase
+  if (foe.counter?.atkKo) return { verdict: 'ko', player, foe }; // tu le tues en ripostant
+  const took = (player.counter?.total ?? 0) > 0 || foe.atk.total > 0;
+  return { verdict: took ? 'trade' : 'win', player, foe };
+}
