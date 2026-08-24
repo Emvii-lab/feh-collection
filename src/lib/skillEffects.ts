@@ -138,10 +138,11 @@ function pPctReduction(d: string, out: ParsedEffects) {
   if (m) out.dmgReductionPct = Math.max(out.dmgReductionPct, +m[1]);
 }
 
-// P7. Malus infligés à l'adversaire : « inflicts Atk/Res-4 on foe » (somme).
+// P7. Malus infligés à l'adversaire : « inflicts Atk/Res-4 on foe(s) » (Ploy, Chill,
+// Menace/Threaten…). On accepte « on foe », « on foes », « on the foe », « on those foes ».
 function pFoeDebuff(d: string, out: ParsedEffects) {
   const re = new RegExp(
-    `(?:inflicts|inflige)\\s*(${STAT_RE}(?:/${STAT_RE})*)\\s*-\\s*(\\d+)\\s*(?:on foe|a l'ennemi|sur l'ennemi)`, 'g');
+    `(?:inflicts|inflige)\\s*(${STAT_RE}(?:/${STAT_RE})*)\\s*-\\s*(\\d+)\\s*(?:on\\s+(?:the\\s+|those\\s+)?foes?|(?:a|sur|aux?)\\s+l['e ]?(?:ennemi|adversaire)s?)`, 'g');
   let m: RegExpExecArray | null;
   while ((m = re.exec(d))) {
     const n = +m[2];

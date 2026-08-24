@@ -79,7 +79,8 @@ function toMods(e: EnemyCombat, effAgainst: string[]): CombatMods {
     guaranteedFollowup: e.guaranteedFollowup, cannotBeDoubled: e.cannotBeDoubled, noFollowup: e.noFollowup,
     counterAnyRange: e.counterAnyRange, preventFoeCounter: e.preventFoeCounter,
     neutralizeFoeBonuses: e.neutralizeFoeBonuses, pierceFoeReduction: e.pierceFoeReduction,
-    dmgReductionPct: e.dmgReductionPct, flatDmgReduction: e.flatDmgReduction, special: e.special,
+    dmgReductionPct: e.dmgReductionPct, flatDmgReduction: e.flatDmgReduction,
+    foeAtk: e.foeAtk, foeSpd: e.foeSpd, foeDef: e.foeDef, foeRes: e.foeRes, special: e.special,
   };
 }
 
@@ -283,6 +284,8 @@ export function Simulator({
     preventFoeCounter: enemy.preventFoeCounter ?? false,
     neutralizeFoeBonuses: enemy.neutralizeFoeBonuses ?? false,
     pierceFoeReduction: enemy.pierceFoeReduction ?? false,
+    foeAtk: enemy.foeAtk ?? 0, foeSpd: enemy.foeSpd ?? 0,
+    foeDef: enemy.foeDef ?? 0, foeRes: enemy.foeRes ?? 0,
     special: enemy.special ?? NO_MODS.special,
     vantage: enemy.vantage,
   };
@@ -319,21 +322,20 @@ export function Simulator({
     if (!h || !s) return null;
     const wi = weaponInfo.get(id) ?? NO_WI;
     const pu = unitMods.get(id) ?? { atkBuff: 0, guaranteedFollowup: false, dmgReductionPct: 0 };
-    // Malus que l'ennemi t'inflige (ex. « Inflicts Spd/Res-4 on foe ») → baissent TES stats.
-    const foeAtk = enemy.foeAtk ?? 0, foeSpd = enemy.foeSpd ?? 0;
-    const foeDef = enemy.foeDef ?? 0, foeRes = enemy.foeRes ?? 0;
     const ef = wi.effects; // effets détectés sur TON arme (best-effort, arme seule)
+    // Les malus que l'ennemi t'inflige sont désormais appliqués PAR LE MOTEUR
+    // (enemyMods.foeXxx), plus besoin de les soustraire ici.
     return {
       hero: h, stats: s,
       mods: {
         ...NO_MODS, brave: ef.brave, effAgainst: wi.effAgainst,
-        // bonus en combat auto (arme) + réglage manuel de l'ATQ − malus infligés par l'ennemi
-        atkBuff: ef.atkBuff + pu.atkBuff - foeAtk,
-        spdBuff: ef.spdBuff - foeSpd, defBuff: ef.defBuff - foeDef, resBuff: ef.resBuff - foeRes,
+        atkBuff: ef.atkBuff + pu.atkBuff,
+        spdBuff: ef.spdBuff, defBuff: ef.defBuff, resBuff: ef.resBuff,
         bonusDamage: ef.bonusDamage, bonusDamageStat: ef.bonusDamageStat,
         counterAnyRange: ef.counterAnyRange, preventFoeCounter: ef.preventFoeCounter,
         neutralizeFoeBonuses: ef.neutralizeFoeBonuses, pierceFoeReduction: ef.pierceFoeReduction,
-        // doublon : garanti par l'arme ou réglé à la main ; réduction : arme + manuel
+        // malus que TON arme inflige à l'ennemi (Ploy/inflige…)
+        foeAtk: ef.foeAtk, foeSpd: ef.foeSpd, foeDef: ef.foeDef, foeRes: ef.foeRes,
         guaranteedFollowup: ef.guaranteedFollowup || pu.guaranteedFollowup,
         cannotBeDoubled: ef.cannotBeDoubled, noFollowup: ef.noFollowup,
         dmgReductionPct: Math.max(ef.dmgReductionPct, pu.dmgReductionPct),

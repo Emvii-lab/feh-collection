@@ -50,6 +50,8 @@ export type CombatMods = {
   pierceFoeReduction: boolean; // annule la réduction de dégâts de l'adversaire
   dmgReductionPct: number; // % de réduction des dégâts SUBIS (0-100)
   flatDmgReduction: number; // réduction FIXE des dégâts subis (par coup)
+  // Malus que CETTE unité inflige à son adversaire (Ploy, Chill, Menace, « inflige X »).
+  foeAtk: number; foeSpd: number; foeDef: number; foeRes: number; // valeurs positives
   special: SpecialInfo; // spéciale équipée (jauge simulée)
   vantage: boolean; // en défense : frappe en premier
 };
@@ -60,6 +62,7 @@ export const NO_MODS: CombatMods = {
   guaranteedFollowup: false, noFollowup: false, cannotBeDoubled: false,
   counterAnyRange: false, preventFoeCounter: false, neutralizeFoeBonuses: false,
   pierceFoeReduction: false, dmgReductionPct: 0, flatDmgReduction: 0,
+  foeAtk: 0, foeSpd: 0, foeDef: 0, foeRes: 0,
   special: { maxCd: 0, kind: 'none' }, vantage: false,
 };
 
@@ -107,15 +110,13 @@ function strikeDamage(
   atk: Unit, def: Unit, offense: SpecialInfo | null, defReducePct: number,
 ): StrikeMeta {
   const adv = triangle(atk.hero.color, def.hero.color);
-  let a = atk.stats.atk + effMod(atk, def, 'atkBuff');
+  let a = effStat(atk, def, 'atk');
   const mod = Math.trunc(a * 0.2);
   a = adv === 1 ? a + mod : adv === -1 ? a - mod : a;
   const effective = isEffective(atk, def);
   if (effective) a = Math.trunc(a * 1.5);
   const useRes = targetsRes(atk.hero.weaponType);
-  let mit = useRes
-    ? def.stats.res + effMod(def, atk, 'resBuff')
-    : def.stats.def + effMod(def, atk, 'defBuff');
+  let mit = Math.max(0, useRes ? effStat(def, atk, 'res') : effStat(def, atk, 'def'));
   if (offense?.defIgnorePct) mit = mit - Math.trunc(mit * offense.defIgnorePct / 100);
   let dmg = Math.max(0, a - mit);
   dmg += atk.mods.bonusDamage || 0; // dégâts fixes (ex. « = compteur × N »)
@@ -133,24 +134,30 @@ function strikeDamage(
   return { dmg: Math.max(0, dmg), adv, targetsRes: useRes, effective };
 }
 
-// Valeur effective d'une stat (base + bonus) pour les dégâts « = % de la stat ».
+// Stat effective d'une unité face à son adversaire : base + bonus (annulé si l'ennemi
+// neutralise) − malus que l'ennemi lui inflige (Ploy/Chill/Menace/« inflige X »).
+function effStat(u: Unit, foe: Unit, stat: 'atk' | 'spd' | 'def' | 'res'): number {
+  const buff = effMod(u, foe, (stat + 'Buff') as 'atkBuff');
+  const foeKey = ('foe' + stat[0].toUpperCase() + stat.slice(1)) as 'foeAtk';
+  return u.stats[stat] + buff - (foe.mods[foeKey] || 0);
+}
+
+// Valeur effective d'une stat pour les dégâts « = % de la stat ».
 function statVal(u: Unit, foe: Unit, stat: 'atk' | 'spd' | 'def' | 'res' | 'hp'): number {
-  if (stat === 'hp') return u.stats.hp;
-  return u.stats[stat] + effMod(u, foe, (stat + 'Buff') as 'atkBuff');
+  return stat === 'hp' ? u.stats.hp : effStat(u, foe, stat);
 }
 
 // Dégâts bonus = pourcentage d'une stat du porteur (toujours actifs, hors spéciale).
 function statBonusDamage(atk: Unit, def: Unit): number {
   const p = atk.mods.bonusDamageStat;
   if (!p) return 0;
-  const val = (base: number, buff: number, pct: number) =>
-    pct ? Math.trunc((base + buff) * pct / 100) : 0;
+  const val = (v: number, pct: number) => (pct ? Math.trunc(v * pct / 100) : 0);
   return (
-    val(atk.stats.atk, effMod(atk, def, 'atkBuff'), p.atk) +
-    val(atk.stats.spd, effMod(atk, def, 'spdBuff'), p.spd) +
-    val(atk.stats.def, effMod(atk, def, 'defBuff'), p.def) +
-    val(atk.stats.res, effMod(atk, def, 'resBuff'), p.res) +
-    val(atk.stats.hp, 0, p.hp)
+    val(effStat(atk, def, 'atk'), p.atk) +
+    val(effStat(atk, def, 'spd'), p.spd) +
+    val(effStat(atk, def, 'def'), p.def) +
+    val(effStat(atk, def, 'res'), p.res) +
+    val(atk.stats.hp, p.hp)
   );
 }
 
@@ -159,7 +166,7 @@ function doubles(u: Unit, v: Unit): boolean {
   if (u.mods.noFollowup) return false;
   if (v.mods.cannotBeDoubled) return false;
   if (u.mods.guaranteedFollowup) return true;
-  return (u.stats.spd + effMod(u, v, 'spdBuff')) - (v.stats.spd + effMod(v, u, 'spdBuff')) >= 5;
+  return effStat(u, v, 'spd') - effStat(v, u, 'spd') >= 5;
 }
 
 export function canCounter(attacker: Unit, defender: Unit): boolean {
