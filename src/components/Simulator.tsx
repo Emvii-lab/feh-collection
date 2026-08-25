@@ -12,6 +12,7 @@ import type { Board, BattleUnit } from '../lib/battle';
 import type { SearchResult, SearchUnit, TeamResult } from '../lib/teamSearch';
 import { fetchTeamWeapons, fetchEnemyCombat, EMPTY_EFFECTS, type WeaponInfo, type EnemyCombat } from '../lib/simWeapons';
 import type { SpecialInfo } from '../lib/skillEffects';
+import { WeaponIcon } from './icons';
 import {
   fetchWikiMap, parsePageTitle, resolveEnemy, resolveMapImage,
   type WikiEnemy, type WikiMap,
@@ -53,13 +54,9 @@ const COLORS: { v: Color; label: string }[] = [
 const WEAPONS: WeaponType[] = ['Sword', 'Lance', 'Axe', 'Tome', 'Bow', 'Dagger', 'Staff', 'Dragon', 'Beast'];
 const MOVES = ['Infantry', 'Cavalry', 'Flying', 'Armored'] as const;
 
-// Pastilles couleur/arme pour les résultats d'équipe.
+// Pastille couleur de repli (si l'icône réelle du héros manque).
 const COLOR_DOT: Record<string, string> = {
   red: 'bg-red-500', blue: 'bg-blue-500', green: 'bg-green-500', colorless: 'bg-neutral-300',
-};
-const WEAPON_ICON: Record<string, string> = {
-  Sword: '⚔️', Lance: '🔱', Axe: '🪓', Tome: '📖', Bow: '🏹',
-  Dagger: '🗡️', Staff: '✚', Dragon: '🐉', Beast: '🐾',
 };
 
 // Plan tour par tour (réutilisé par « Résoudre la carte » ET les équipes trouvées).
@@ -1022,13 +1019,16 @@ export function Simulator({
                                   <li key={i} className="rounded bg-black/25 px-2 py-1">
                                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                                       <span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-warm-dim">
-                                        {t.names.map((n, j) => (
+                                        {t.names.map((n, j) => {
+                                          const mh = byId.get(t.ids[j]);
+                                          return (
                                           <span key={j} className="inline-flex items-center gap-0.5">
-                                            <span
-                                              className={`inline-block h-2.5 w-2.5 rounded-full ring-1 ring-black/40 ${COLOR_DOT[t.colors?.[j]] ?? 'bg-white/40'}`}
-                                              title={t.colors?.[j]}
-                                            />
-                                            <span title={t.weapons?.[j]}>{WEAPON_ICON[t.weapons?.[j]] ?? ''}</span>
+                                            {mh?.colorUrl ? (
+                                              <img src={mh.colorUrl} alt={t.colors?.[j]} title={t.colors?.[j]} className="inline-block h-3.5 w-3.5 object-contain align-middle" />
+                                            ) : (
+                                              <span className={`inline-block h-2.5 w-2.5 rounded-full ring-1 ring-black/40 ${COLOR_DOT[t.colors?.[j]] ?? 'bg-white/40'}`} title={t.colors?.[j]} />
+                                            )}
+                                            <WeaponIcon type={(mh?.weaponType ?? t.weapons?.[j]) as WeaponType} iconUrl={mh?.weaponUrl} size={14} />
                                             <span>{n}{t.titles?.[j] ? <span className="text-warm-mute/70"> : {t.titles[j]}</span> : null}</span>
                                             {builtIds.has(t.ids[j]) ? (
                                               <span title="Build enregistré (kit exact)" className="rounded bg-emerald-500/25 px-1 text-[8.5px] font-semibold text-emerald-200">build</span>
@@ -1037,7 +1037,8 @@ export function Simulator({
                                             )}
                                             {j < t.names.length - 1 ? <span className="text-warm-mute/50">·</span> : null}
                                           </span>
-                                        ))}
+                                          );
+                                        })}
                                       </span>
                                       <span className="text-[10px] text-warm-mute">({t.turns} tour{t.turns > 1 ? 's' : ''})</span>
                                       <div className="ml-auto flex items-center gap-1.5">
@@ -1200,14 +1201,13 @@ export function Simulator({
           <div className="space-y-2">
             {results.map((r) => (
               <UnitRow
-                key={r.id} hero={r.unit.hero} sim={r.sim} foe={r.foe} verdict={r.verdict}
+                key={r.id} hero={r.unit.hero} sim={r.sim} foe={r.foe}
                 enemy={enemyUnit} unit={r.unit}
                 expanded={expanded === r.id}
                 onToggle={() => setExpanded((x) => (x === r.id ? null : r.id))}
                 onRemove={() => toggleMember(r.id)}
                 mods={unitMods.get(r.id) ?? { atkBuff: 0, guaranteedFollowup: false, dmgReductionPct: 0 }}
                 onMods={(m) => setUnitMods((prev) => new Map(prev).set(r.id, m))}
-                weaponInfo={weaponInfo.get(r.id)}
               />
             ))}
           </div>
@@ -1501,15 +1501,14 @@ function MapGrid({
 }
 
 function UnitRow({
-  hero, sim, foe, verdict, enemy, unit, expanded, onToggle, onRemove, mods, onMods, weaponInfo,
+  hero, sim, foe, enemy, unit, expanded, onToggle, onRemove, mods, onMods,
 }: {
-  hero: Hero; sim: Sim; foe: Sim | null; verdict: Verdict; enemy: Unit; unit: Unit;
+  hero: Hero; sim: Sim; foe: Sim | null; enemy: Unit; unit: Unit;
   expanded: boolean; onToggle: () => void; onRemove: () => void;
-  mods: UnitMods; onMods: (m: UnitMods) => void; weaponInfo?: WeaponInfo;
+  mods: UnitMods; onMods: (m: UnitMods) => void;
 }) {
-  const v = VERDICT_META[verdict];
   return (
-    <div className={`rounded-xl border ${v.cls.replace(/text-[^ ]+/, '')} overflow-hidden`}>
+    <div className="rounded-xl border border-white/10 overflow-hidden">
       <div className="flex items-center gap-2 p-2.5">
         <button type="button" onClick={onToggle} className="flex min-w-0 flex-1 items-center gap-2 text-left">
           {hero.art ? (
@@ -1523,12 +1522,6 @@ function UnitRow({
             {hero.name} <span className="text-warm-mute">— {hero.title}</span>
           </span>
         </button>
-        {weaponInfo?.hasBuild ? (
-          <span title="Build enregistré : kit exact" className="shrink-0 rounded bg-emerald-500/25 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-200">build</span>
-        ) : (
-          <span title="Estimation depuis l'arme seule (pas de build enregistré)" className="shrink-0 rounded bg-white/10 px-1.5 py-0.5 text-[9px] text-warm-mute">arme</span>
-        )}
-        <span className={`shrink-0 rounded-md border px-2 py-0.5 font-feh text-[11px] ${v.cls}`}>{v.label}</span>
         <button type="button" onClick={onToggle} className="shrink-0 text-warm-mute hover:text-warm-dim" title="Détails">
           {expanded ? '▴' : '▾'}
         </button>
