@@ -85,8 +85,10 @@ export function searchTeam(
     for (const e of enemies) {
       let perTurn = 0;
       for (const u of team) perTurn += dmg.get(u.id)!.get(e.id) ?? 0;
-      // borne généreuse : chaque membre peut frapper cet ennemi ~1×/tour.
-      if (perTurn * maxTurns < e.hp) return false;
+      // borne TRÈS généreuse (chaque membre frappe cet ennemi ~1×/tour, + marge 1,5×
+      // pour les spéciales/bonus de zone non simulés en 1v1) : on ne veut écarter QUE
+      // les équipes réellement incapables de tuer cet ennemi. Aucun faux négatif.
+      if (perTurn * maxTurns * 1.5 < e.hp) return false;
     }
     return true;
   };

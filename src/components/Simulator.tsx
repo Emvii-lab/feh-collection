@@ -540,7 +540,7 @@ export function Simulator({
       };
       worker.postMessage({
         kind: 'search', pool, enemies: enemyUnits, terrain, allyPos: wikiMap.allyPos, linked,
-        opts: { maxTurns: solveTurns, perTeamBudget: 500_000, perTeamMs: 1800, globalMs: 150_000, allowDeaths: false },
+        opts: { maxTurns: Math.max(solveTurns, 6), perTeamBudget: 500_000, perTeamMs: 2500, globalMs: 150_000, allowDeaths: false },
       });
     } catch {
       setSearchRes({ teams: [], tested: 0, poolSize: 0, reason: 'Erreur pendant la préparation de la recherche.' });
@@ -580,10 +580,29 @@ export function Simulator({
       const built = (s: Stats): Stats => ({
         hp: s.hp + 6, atk: s.atk + 5, spd: s.spd + 5, def: s.def + 5, res: s.res + 5,
       });
+      // Un héros « bien monté » a une SPÉCIALE et, s'il est au corps-à-corps, une RIPOSTE
+      // À DISTANCE (Distant Counter) — indispensables pour tanker/nettoyer une Infernal.
+      // On équipe donc un build méta plausible adapté au profil de stats.
+      const metaMods = (h: Hero, s: Stats, base: CombatMods): CombatMods => {
+        const w = h.weaponType;
+        const melee = w === 'Sword' || w === 'Lance' || w === 'Axe' || w === 'Dragon' || w === 'Beast';
+        // Spéciale adaptée : gros mur DÉF → Bonfire ; gros mur RÉS → Iceberg ; sinon
+        // Moonbow (fiable, charge 2, ignore 30% de la mitigation).
+        let special: SpecialInfo;
+        if (s.def >= s.res && s.def >= 33) special = { maxCd: 3, kind: 'offense', addStatPct: { stat: 'def', pct: 50 } };
+        else if (s.res >= 33) special = { maxCd: 3, kind: 'offense', addStatPct: { stat: 'res', pct: 50 } };
+        else special = { maxCd: 2, kind: 'offense', defIgnorePct: 30 };
+        return {
+          ...base,
+          special: base.special && base.special.kind !== 'none' ? base.special : special,
+          counterAnyRange: base.counterAnyRange || melee,
+        };
+      };
       const pool: SearchUnit[] = ranked.map(({ h, s }) => {
         const wi = wmap.get(h.id) ?? NO_WI;
         const hero = { id: h.id, name: h.name, title: h.title, color: h.color, weaponType: h.weaponType, moveType: h.moveType, rarity: 5, origin: '' } as Hero;
-        return { id: h.id, name: h.name, title: h.title, unit: { hero, stats: built(s), mods: toMods(wi.effects, wi.effAgainst) } };
+        const bs = built(s);
+        return { id: h.id, name: h.name, title: h.title, unit: { hero, stats: bs, mods: metaMods(hero, bs, toMods(wi.effects, wi.effAgainst)) } };
       });
 
       const passive = /passive/i.test(wikiMap.globalai || '');
@@ -617,7 +636,7 @@ export function Simulator({
       };
       worker.postMessage({
         kind: 'search', pool, enemies: enemyUnits, terrain, allyPos: wikiMap.allyPos, linked,
-        opts: { maxTurns: solveTurns, perTeamBudget: 500_000, perTeamMs: 1800, globalMs: 150_000, allowDeaths: false },
+        opts: { maxTurns: Math.max(solveTurns, 6), perTeamBudget: 500_000, perTeamMs: 2500, globalMs: 150_000, allowDeaths: false },
       });
     } catch {
       setSearchRes({ teams: [], tested: 0, poolSize: 0, reason: 'Erreur pendant la préparation du théorycraft.' });
@@ -977,7 +996,7 @@ export function Simulator({
                               <p className="mt-1 text-[9.5px] text-warm-mute/70">
                                 {searchRes.tested} équipe(s) testée(s) sur {searchRes.poolSize} candidats.
                                 {searchScope === 'game'
-                                  ? ' Héros du jeu supposés bien montés (≈ +10 fusions / dragonflowers / IV), meilleure arme — indication de qui viser, à obtenir/monter.'
+                                  ? ' Héros du jeu supposés bien montés (≈ +10 fusions / dragonflowers / IV + spéciale + riposte à distance au corps-à-corps, ≥6 tours) — indication de qui viser, à obtenir/monter.'
                                   : <> <span className="text-emerald-300/70">build</span> = kit exact · <span className="text-warm-mute">arme</span> = estimation.</>}
                                 {' '}Plans valables si l'IA joue standard.
                               </p>
