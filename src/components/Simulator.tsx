@@ -580,41 +580,31 @@ export function Simulator({
       const built = (s: Stats): Stats => ({
         hp: s.hp + 6, atk: s.atk + 5, spd: s.spd + 5, def: s.def + 5, res: s.res + 5,
       });
-      // Un héros « bien monté », ce n'est pas que l'arme + la spéciale : ce sont aussi les
-      // COMPÉTENCES A/B/C + sceau (Fury/Death Blow, réduction de dégâts type Spurn, Null
-      // Follow-Up, Distant Counter, buffs de zone…). On équipe donc un build méta plausible
-      // adapté au profil de stats, pour évaluer chaque héros à sa vraie puissance montée.
-      const metaMods = (h: Hero, s: Stats, base: CombatMods): CombatMods => {
+      // `base` = les effets RÉELS du kit natif (arme + spéciale + passives lus du learnset).
+      // On ne fait que COMBLER les essentiels quasi universels qu'on inherit en pratique et
+      // sans lesquels aucune équipe ne survit à une Infernal : une riposte (Distant Counter
+      // au corps-à-corps), une spéciale offensive utilisable, et un peu de réduction de
+      // dégâts sur les murs. Aucun cumul de stats par-dessus les passives natives.
+      const gapFill = (h: Hero, s: Stats, base: CombatMods): CombatMods => {
         const w = h.weaponType;
         const melee = w === 'Sword' || w === 'Lance' || w === 'Axe' || w === 'Dragon' || w === 'Beast';
-        const bulky = s.def >= 33 || s.res >= 33; // profil « mur » vs « nuke »
-        // Spéciale adaptée : gros mur DÉF → Bonfire ; gros mur RÉS → Iceberg ; sinon
-        // Moonbow (fiable, charge 2, ignore 30% de la mitigation).
+        const bulky = s.def >= 33 || s.res >= 33;
+        // Spéciale offensive de repli si le kit natif n'en a pas (garde la native sinon).
         let special: SpecialInfo;
         if (s.def >= s.res && s.def >= 33) special = { maxCd: 3, kind: 'offense', addStatPct: { stat: 'def', pct: 50 } };
         else if (s.res >= 33) special = { maxCd: 3, kind: 'offense', addStatPct: { stat: 'res', pct: 50 } };
         else special = { maxCd: 2, kind: 'offense', defIgnorePct: 30 };
         const m: CombatMods = { ...base };
-        m.special = base.special && base.special.kind !== 'none' ? base.special : special;
-        m.counterAnyRange = base.counterAnyRange || melee;       // Distant/Close Counter
-        m.atkBuff = (base.atkBuff || 0) + 6;                     // A-slot offensif (Fury/Blow/Solo)
-        if (bulky) {
-          // MUR : compétence B de réduction de dégâts (Spurn/Repel…) + tenue accrue.
-          m.dmgReductionPct = Math.max(base.dmgReductionPct || 0, 30);
-          m.defBuff = (base.defBuff || 0) + 4;
-          m.resBuff = (base.resBuff || 0) + 4;
-        } else {
-          // NUKE : vitesse (Spd A/sceau) + doublon garanti (Null Follow-Up).
-          m.spdBuff = (base.spdBuff || 0) + 6;
-          m.guaranteedFollowup = true;
-        }
+        m.special = base.special && base.special.kind === 'offense' ? base.special : special;
+        m.counterAnyRange = base.counterAnyRange || melee;          // Distant/Close Counter inherit
+        if (bulky) m.dmgReductionPct = Math.max(base.dmgReductionPct || 0, 25); // B de réduction inherit
         return m;
       };
       const pool: SearchUnit[] = ranked.map(({ h, s }) => {
         const wi = wmap.get(h.id) ?? NO_WI;
         const hero = { id: h.id, name: h.name, title: h.title, color: h.color, weaponType: h.weaponType, moveType: h.moveType, rarity: 5, origin: '' } as Hero;
         const bs = built(s);
-        return { id: h.id, name: h.name, title: h.title, unit: { hero, stats: bs, mods: metaMods(hero, bs, toMods(wi.effects, wi.effAgainst)) } };
+        return { id: h.id, name: h.name, title: h.title, unit: { hero, stats: bs, mods: gapFill(hero, bs, toMods(wi.effects, wi.effAgainst)) } };
       });
 
       const passive = /passive/i.test(wikiMap.globalai || '');

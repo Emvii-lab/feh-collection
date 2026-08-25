@@ -2,10 +2,10 @@ import { supabase } from './supabase';
 import { parseSkillEffects, type ParsedEffects, type SkillRow } from './skillEffects';
 import { fetchBuilds, BUILD_SLOTS } from './builds';
 
-// Efficacité + tous les effets détectables de la meilleure arme de chaque héros
-// (lu depuis feh.skills, via le moteur d'effets). Aucune donnée n'est stockée.
-// NB : on ne connaît que l'ARME (la base a le learnset, pas l'équipement réel des
-// passifs/spéciale), donc ton équipe reste sous-estimée = biais prudent.
+// Efficacité + tous les effets détectables du kit de chaque héros (lu depuis feh.skills,
+// via le moteur d'effets). Aucune donnée n'est stockée. Si TON build est enregistré, on
+// lit l'équipement exact ; sinon on reconstruit le KIT NATIF complet depuis le learnset
+// (meilleure arme + spéciale + passives A/B/C au palier le plus haut).
 export type WeaponInfo = {
   effAgainst: string[];
   effects: ParsedEffects; // brave, bonus, dégâts %stat, riposte à distance, etc.
@@ -37,6 +37,35 @@ const isBrave = (d: string | null) => /attacks?\s+twice|\bbrave\b/i.test(d ?? ''
 // Puissance effective pour choisir la "meilleure" arme (Brave compte double).
 const effMight = (might: number | null, desc: string | null) =>
   (might ?? 0) * (isBrave(desc) ? 1.9 : 1);
+
+// Palier d'un skill (Fury 3 > Fury 1, HP Plus5 > Plus3). Sans chiffre = premium nommé
+// (Flash Sparrow, Get Behind Me…) → considéré comme haut de gamme.
+const skillTier = (name: string): number => {
+  const m = name.match(/(\d+)\s*$/) || name.match(/Plus\s*(\d+)/i);
+  return m ? +m[1] : 3.5;
+};
+
+// Reconstruit le KIT NATIF équipable à partir de tout le learnset : un seul skill par
+// catégorie (le meilleur palier), pour éviter de cumuler Fury 1+2+3. Arme = plus grosse
+// puissance ; spéciale = charge la plus élevée ; passives/sceau = palier le plus haut.
+function topKit(rows: WRow[]): WRow[] {
+  const byCat = new Map<string, WRow[]>();
+  for (const r of rows) {
+    const c = (r.scategory ?? '').toLowerCase();
+    (byCat.get(c) ?? byCat.set(c, []).get(c)!).push(r);
+  }
+  const out: WRow[] = [];
+  for (const [c, list] of byCat) {
+    let best = list[0];
+    for (const r of list) {
+      if (c === 'weapon') { if (effMight(r.might, r.description) > effMight(best.might, best.description)) best = r; }
+      else if (c === 'special') { if ((r.cooldown ?? 0) > (best.cooldown ?? 0)) best = r; }
+      else if (skillTier(r.wiki_name) > skillTier(best.wiki_name)) best = r;
+    }
+    out.push(best);
+  }
+  return out;
+}
 
 // ---- Effets d'un ennemi de map, détectés depuis SES compétences (best-effort) ----
 // Délègue au moteur d'effets extensible (voir skillEffects.ts), qui gère aussi
@@ -126,18 +155,18 @@ export async function fetchTeamWeapons(
     });
   }
 
-  // 3b) héros SANS build → meilleure arme du kit natif.
+  // 3b) héros SANS build → KIT NATIF complet (arme + spéciale + passives A/B/C) au
+  // meilleur palier, reconstruit depuis le learnset. Vraie donnée de jeu, pas une
+  // simple arme : on récupère les effets réels du perso (Distant Counter d'arme,
+  // réduction de dégâts, doublon garanti, buffs…).
   for (const [hid, names] of namesByHero) {
-    let best: WRow | null = null;
-    for (const n of names) {
-      const w = skillMap.get(n);
-      if (!w || w.scategory !== 'weapon') continue;
-      if (!best || effMight(w.might, w.description) > effMight(best.might, best.description)) best = w;
-    }
-    if (best) {
+    const rows = names.map((n) => skillMap.get(n)).filter((w): w is WRow => Boolean(w));
+    const kit = topKit(rows);
+    const weaponRow = kit.find((r) => (r.scategory ?? '').toLowerCase() === 'weapon') ?? null;
+    if (kit.length) {
       out.set(hid, {
-        effAgainst: normEff(best.weapon_effectiveness),
-        effects: parseSkillEffects([best as SkillRow]),
+        effAgainst: normEff(weaponRow?.weapon_effectiveness ?? null),
+        effects: parseSkillEffects(kit as SkillRow[]),
         hasBuild: false,
       });
     }
