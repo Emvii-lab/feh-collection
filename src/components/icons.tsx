@@ -1,15 +1,17 @@
 import type { MoveType, WeaponType } from '../types';
 
-const WEAPON_GLYPH: Record<WeaponType, string> = {
-  Sword: '🗡️',
+// Repli emoji, tolérant aux libellés anglais ET français (la base stocke le type
+// d'arme en français : Épée, Hache, Arc, Dague, Bâton, Souffle, Bête).
+const WEAPON_GLYPH: Record<string, string> = {
+  Sword: '🗡️', Épée: '🗡️',
   Lance: '🔱',
-  Axe: '🪓',
+  Axe: '🪓', Hache: '🪓',
   Tome: '📖',
-  Bow: '🏹',
-  Dagger: '🔪',
-  Staff: '✨',
-  Dragon: '🐉',
-  Beast: '🐾',
+  Bow: '🏹', Arc: '🏹',
+  Dagger: '🔪', Dague: '🔪',
+  Staff: '✨', Bâton: '✨',
+  Dragon: '🐉', Souffle: '🐉',
+  Beast: '🐾', Bête: '🐾',
 };
 
 export function WeaponIcon({
@@ -17,7 +19,7 @@ export function WeaponIcon({
   iconUrl,
   size = 18,
 }: {
-  type: WeaponType;
+  type: WeaponType | string;
   iconUrl?: string;
   size?: number;
 }) {
@@ -34,7 +36,7 @@ export function WeaponIcon({
   }
   return (
     <span title={type} aria-label={type}>
-      {WEAPON_GLYPH[type]}
+      {WEAPON_GLYPH[type] ?? '⚔️'}
     </span>
   );
 }
