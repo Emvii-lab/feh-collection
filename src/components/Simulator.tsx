@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { Color, Hero, WeaponType } from '../types';
+import type { Color, Hero, WeaponType, Stats } from '../types';
 import type { CollStats } from '../lib/collection';
 import {
   resolveStats, combatVerdict,
@@ -541,7 +541,7 @@ export function Simulator({
       };
       worker.postMessage({
         kind: 'search', pool, enemies: enemyUnits, terrain, allyPos: wikiMap.allyPos, linked,
-        opts: { maxTurns: solveTurns, topK: 6, perTeamBudget: 500_000, perTeamMs: 4000, allowDeaths: solveDeaths },
+        opts: { maxTurns: solveTurns, topK: 5, perTeamBudget: 500_000, perTeamMs: 3500, allowDeaths: solveDeaths },
       });
     } catch {
       setSearchRes({ teams: [], tested: 0, poolSize: 0, reason: 'Erreur pendant la préparation de la recherche.' });
@@ -575,10 +575,16 @@ export function Simulator({
         .sort((a, b) => prelim(b.h, b.s) - prelim(a.h, a.s))
         .slice(0, 16);
       const wmap = await fetchTeamWeapons(ranked.map((x) => x.h.id), null);
+      // Théorycraft = « quel héros DU JEU pourrait le faire, bien monté ». On l'évalue
+      // donc à un niveau d'investissement réaliste (≈ +10 merges + dragonflowers + IV),
+      // pas en 5★ neutre pur (sinon on sous-estime et aucune équipe ne clear une Infernal).
+      const built = (s: Stats): Stats => ({
+        hp: s.hp + 6, atk: s.atk + 5, spd: s.spd + 5, def: s.def + 5, res: s.res + 5,
+      });
       const pool: SearchUnit[] = ranked.map(({ h, s }) => {
         const wi = wmap.get(h.id) ?? NO_WI;
         const hero = { id: h.id, name: h.name, title: h.title, color: h.color, weaponType: h.weaponType, moveType: h.moveType, rarity: 5, origin: '' } as Hero;
-        return { id: h.id, name: h.name, title: h.title, unit: { hero, stats: s, mods: toMods(wi.effects, wi.effAgainst) } };
+        return { id: h.id, name: h.name, title: h.title, unit: { hero, stats: built(s), mods: toMods(wi.effects, wi.effAgainst) } };
       });
 
       const passive = /passive/i.test(wikiMap.globalai || '');
@@ -612,7 +618,7 @@ export function Simulator({
       };
       worker.postMessage({
         kind: 'search', pool, enemies: enemyUnits, terrain, allyPos: wikiMap.allyPos, linked,
-        opts: { maxTurns: solveTurns, topK: 6, perTeamBudget: 500_000, perTeamMs: 4000, allowDeaths: solveDeaths },
+        opts: { maxTurns: solveTurns, topK: 5, perTeamBudget: 500_000, perTeamMs: 3500, allowDeaths: solveDeaths },
       });
     } catch {
       setSearchRes({ teams: [], tested: 0, poolSize: 0, reason: 'Erreur pendant la préparation du théorycraft.' });
@@ -971,7 +977,7 @@ export function Simulator({
                               <p className="mt-1 text-[9.5px] text-warm-mute/70">
                                 {searchRes.tested} équipe(s) testée(s) sur {searchRes.poolSize} candidats.
                                 {searchScope === 'game'
-                                  ? ' Héros du jeu (5★ neutre, meilleure arme) — indication de qui viser, à obtenir/monter.'
+                                  ? ' Héros du jeu supposés bien montés (≈ +10 fusions / dragonflowers / IV), meilleure arme — indication de qui viser, à obtenir/monter.'
                                   : <> <span className="text-emerald-300/70">build</span> = kit exact · <span className="text-warm-mute">arme</span> = estimation.</>}
                                 {' '}Plans valables si l'IA joue standard.
                               </p>
