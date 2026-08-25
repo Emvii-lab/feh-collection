@@ -972,11 +972,11 @@ export function Simulator({
                                     <span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-warm-dim">
                                       {t.names.map((n, j) => (
                                         <span key={j} className="inline-flex items-center gap-0.5">
-                                          {n}
+                                          <span>{n}{t.titles?.[j] ? <span className="text-warm-mute/70"> : {t.titles[j]}</span> : null}</span>
                                           {builtIds.has(t.ids[j]) ? (
                                             <span title="Build enregistré (kit exact)" className="rounded bg-emerald-500/25 px-1 text-[8.5px] font-semibold text-emerald-200">build</span>
                                           ) : (
-                                            <span title="Estimation depuis l'arme seule" className="rounded bg-white/10 px-1 text-[8.5px] text-warm-mute">arme</span>
+                                            <span title="Kit natif complet du learnset (arme + spéciale + passives), pas un build enregistré" className="rounded bg-white/10 px-1 text-[8.5px] text-warm-mute">kit natif</span>
                                           )}
                                           {j < t.names.length - 1 ? <span className="text-warm-mute/50">·</span> : null}
                                         </span>

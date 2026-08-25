@@ -10,7 +10,7 @@ import type { Board, BattleUnit } from './battle';
 import type { TerrainMap } from './tactics';
 
 export type SearchUnit = { id: string; name: string; title: string; unit: Unit };
-export type TeamResult = { ids: string[]; names: string[]; turns: number };
+export type TeamResult = { ids: string[]; names: string[]; titles: string[]; turns: number };
 export type SearchResult = { teams: TeamResult[]; tested: number; poolSize: number; reason: string };
 
 export type SearchOpts = {
@@ -109,7 +109,7 @@ export function searchTeam(
     // survie obligatoire : on ne veut pas d'une « victoire » où un héros meurt.
     const res = solve(board, { maxTurns, nodeBudget: perTeamBudget, timeLimitMs: perTeamMs, allowDeaths: opts.allowDeaths ?? false });
     if (res.win) {
-      winners.push({ ids: team.map((u) => u.id), names: team.map((u) => u.name), turns: res.turns.length });
+      winners.push({ ids: team.map((u) => u.id), names: team.map((u) => u.name), titles: team.map((u) => u.title), turns: res.turns.length });
       if (winners.length >= maxWinners) break;
     }
   }
