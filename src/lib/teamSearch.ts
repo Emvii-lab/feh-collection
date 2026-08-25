@@ -1,9 +1,11 @@
 // Recherche d'équipe : parmi tes persos jouables, cherche une équipe qui nettoie la
-// carte. Heuristique (on ne teste pas TOUTES les combinaisons) : on classe les persos
-// selon leur tenue face au boss, on garde les meilleurs, et on résout les combos les
-// plus prometteurs jusqu'à trouver des équipes gagnantes.
+// carte. On teste TOUTES les combinaisons de 4 du pool, dans l'ordre du plus prometteur
+// (classement selon la tenue face au boss). Pour rester rapide, un pré-filtre bon marché
+// (dégâts cumulés vs PV de chaque ennemi) écarte instantanément les équipes qui ne
+// peuvent physiquement pas tuer tout le monde, et seules les équipes crédibles passent
+// par le solveur lourd. Budget de temps global pour ne pas figer le navigateur.
 import { solve } from './solver';
-import { combatVerdict, type Unit } from './combat';
+import { combatVerdict, simulate, type Unit } from './combat';
 import type { Board, BattleUnit } from './battle';
 import type { TerrainMap } from './tactics';
 
@@ -68,12 +70,36 @@ export function searchTeam(
     .sort((A, B) =>
       B.reduce((s, u) => s + scoreMap.get(u.id)!, 0) - A.reduce((s, u) => s + scoreMap.get(u.id)!, 0));
 
+  // Pré-filtre bon marché (condition NÉCESSAIRE, pas de faux négatif) : les dégâts
+  // qu'un membre inflige à chaque ennemi en un échange, calculés UNE fois (pool ×
+  // ennemis). Une équipe qui, même en concentrant ses 4 membres sur chaque tour, ne
+  // peut pas cumuler assez de dégâts pour tuer un ennemi donné dans le budget de tours
+  // ne pourra JAMAIS nettoyer la carte → on saute le solveur lourd pour elle.
+  const dmg = new Map<string, Map<string, number>>();
+  for (const u of ranked) {
+    const row = new Map<string, number>();
+    for (const e of enemies) row.set(e.id, simulate(u.unit, e.unit).atk.total);
+    dmg.set(u.id, row);
+  }
+  const canTeamReachAllHp = (team: SearchUnit[]): boolean => {
+    for (const e of enemies) {
+      let perTurn = 0;
+      for (const u of team) perTurn += dmg.get(u.id)!.get(e.id) ?? 0;
+      // borne généreuse : chaque membre peut frapper cet ennemi ~1×/tour.
+      if (perTurn * maxTurns < e.hp) return false;
+    }
+    return true;
+  };
+
   const winners: TeamResult[] = [];
-  let tested = 0, timedOut = false;
+  let tested = 0, solved = 0, timedOut = false;
   for (const team of teams) {
     if (Date.now() > globalDeadline) { timedOut = true; break; }
     tested++;
     onProgress?.(tested, teams.length);
+    // écarté instantanément si l'équipe ne peut pas cumuler assez de dégâts.
+    if (!canTeamReachAllHp(team)) continue;
+    solved++;
     const allies: BattleUnit[] = team.map((u, i) => ({
       id: u.id, side: 'ally', unit: u.unit, pos: allyPos[i].toLowerCase(), hp: u.unit.stats.hp, active: true,
     }));
@@ -89,7 +115,7 @@ export function searchTeam(
     teams: winners, tested, poolSize: pool.length,
     reason: winners.length ? ''
       : timedOut
-        ? `Budget de temps atteint : ${tested} équipe(s) testée(s) sur ${teams.length}, aucune ne nettoie la carte sans perte. Essaie plus de tours, ou monte tes persos.`
-        : `Aucune des ${teams.length} équipe(s) possibles ne nettoie la carte sans perte (essaie plus de tours, ou monte tes persos).`,
+        ? `Budget de temps atteint : ${tested}/${teams.length} équipes parcourues (${solved} analysées à fond), aucune ne nettoie la carte sans perte. Essaie plus de tours, ou monte tes persos.`
+        : `Aucune des ${teams.length} équipes possibles ne nettoie la carte sans perte (${solved} crédibles analysées à fond). Essaie plus de tours, ou monte tes persos.`,
   };
 }
