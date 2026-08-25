@@ -375,7 +375,6 @@ export function Simulator({
   const [solving, setSolving] = useState(false);
   const [solveRes, setSolveRes] = useState<SolveResult | null>(null);
   const [solveTurns, setSolveTurns] = useState(3);
-  const [solveDeaths, setSolveDeaths] = useState(false);
   const [solveNodes, setSolveNodes] = useState(0);
   const workerRef = useRef<Worker | null>(null);
   const solveStart = useRef(0); // horodatage de départ (jauge de temps)
@@ -448,7 +447,7 @@ export function Simulator({
         kind: 'solve',
         board,
         // Plus de tours = recherche plus profonde → on laisse plus de temps/budget.
-        opts: { maxTurns: solveTurns, nodeBudget: 8_000_000, timeLimitMs, allowDeaths: solveDeaths },
+        opts: { maxTurns: solveTurns, nodeBudget: 8_000_000, timeLimitMs, allowDeaths: false },
       });
     } catch {
       setSolveRes({ win: false, turns: [], nodes: 0, reason: 'Erreur pendant la préparation du calcul.' });
@@ -541,7 +540,7 @@ export function Simulator({
       };
       worker.postMessage({
         kind: 'search', pool, enemies: enemyUnits, terrain, allyPos: wikiMap.allyPos, linked,
-        opts: { maxTurns: solveTurns, topK: 5, perTeamBudget: 500_000, perTeamMs: 3500, allowDeaths: solveDeaths },
+        opts: { maxTurns: solveTurns, perTeamBudget: 500_000, perTeamMs: 1800, globalMs: 150_000, allowDeaths: false },
       });
     } catch {
       setSearchRes({ teams: [], tested: 0, poolSize: 0, reason: 'Erreur pendant la préparation de la recherche.' });
@@ -618,7 +617,7 @@ export function Simulator({
       };
       worker.postMessage({
         kind: 'search', pool, enemies: enemyUnits, terrain, allyPos: wikiMap.allyPos, linked,
-        opts: { maxTurns: solveTurns, topK: 5, perTeamBudget: 500_000, perTeamMs: 3500, allowDeaths: solveDeaths },
+        opts: { maxTurns: solveTurns, perTeamBudget: 500_000, perTeamMs: 1800, globalMs: 150_000, allowDeaths: false },
       });
     } catch {
       setSearchRes({ teams: [], tested: 0, poolSize: 0, reason: 'Erreur pendant la préparation du théorycraft.' });
@@ -837,9 +836,10 @@ export function Simulator({
                               {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => <option key={n} value={n}>{n}</option>)}
                             </select>
                           </label>
-                          <label className="flex items-center gap-1 text-[10.5px] text-warm-mute">
-                            <input type="checkbox" checked={solveDeaths} onChange={(e) => setSolveDeaths(e.target.checked)} className="h-3 w-3 accent-fuchsia-400" />
-                            autoriser les pertes
+                          <label className="flex items-center gap-1 text-[10.5px] text-warm-mute/50" title="Sur cette carte, perdre un héros = défaite. Les 4 doivent survivre.">
+                            <input type="checkbox" checked={false} disabled className="h-3 w-3 accent-fuchsia-400" />
+                            <span className="line-through">autoriser les pertes</span>
+                            <span className="text-warm-mute/70">— survie obligatoire</span>
                           </label>
                         </div>
                         {solving ? (

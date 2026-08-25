@@ -12,7 +12,8 @@ export type TeamResult = { ids: string[]; names: string[]; turns: number };
 export type SearchResult = { teams: TeamResult[]; tested: number; poolSize: number; reason: string };
 
 export type SearchOpts = {
-  maxTurns?: number; topK?: number; perTeamBudget?: number; perTeamMs?: number; maxWinners?: number; allowDeaths?: boolean;
+  maxTurns?: number; topK?: number; perTeamBudget?: number; perTeamMs?: number;
+  maxWinners?: number; allowDeaths?: boolean; globalMs?: number;
 };
 
 // k-combinaisons d'un tableau.
@@ -38,10 +39,14 @@ export function searchTeam(
   onProgress?: (tested: number, total: number) => void,
 ): SearchResult {
   const maxTurns = opts.maxTurns ?? 3;
-  const topK = opts.topK ?? 6;
   const perTeamBudget = opts.perTeamBudget ?? 300_000;
   const perTeamMs = opts.perTeamMs ?? 2500;
   const maxWinners = opts.maxWinners ?? 3;
+  const globalMs = opts.globalMs ?? 120_000;      // budget total (on teste dans l'ordre)
+  const globalDeadline = Date.now() + globalMs;
+  // topK = combien de héros on garde pour former les combos. Par défaut : TOUT le pool
+  // → on teste réellement toutes les combinaisons de 4 (C(pool,4)), pas un sous-ensemble.
+  const topK = opts.topK ?? pool.length;
   const slots = Math.min(4, allyPos.length || 4);
   if (pool.length < slots || enemies.length === 0) {
     return { teams: [], tested: 0, poolSize: pool.length, reason: 'Pas assez de persos jouables (avec stats) pour former une équipe.' };
@@ -64,14 +69,16 @@ export function searchTeam(
       B.reduce((s, u) => s + scoreMap.get(u.id)!, 0) - A.reduce((s, u) => s + scoreMap.get(u.id)!, 0));
 
   const winners: TeamResult[] = [];
-  let tested = 0;
+  let tested = 0, timedOut = false;
   for (const team of teams) {
+    if (Date.now() > globalDeadline) { timedOut = true; break; }
     tested++;
     onProgress?.(tested, teams.length);
     const allies: BattleUnit[] = team.map((u, i) => ({
       id: u.id, side: 'ally', unit: u.unit, pos: allyPos[i].toLowerCase(), hp: u.unit.stats.hp, active: true,
     }));
     const board: Board = { units: [...enemies.map((e) => ({ ...e })), ...allies], terrain, linked };
+    // survie obligatoire : on ne veut pas d'une « victoire » où un héros meurt.
     const res = solve(board, { maxTurns, nodeBudget: perTeamBudget, timeLimitMs: perTeamMs, allowDeaths: opts.allowDeaths ?? false });
     if (res.win) {
       winners.push({ ids: team.map((u) => u.id), names: team.map((u) => u.name), turns: res.turns.length });
@@ -80,6 +87,9 @@ export function searchTeam(
   }
   return {
     teams: winners, tested, poolSize: pool.length,
-    reason: winners.length ? '' : 'Aucune des équipes testées ne nettoie la carte sans perte (essaie plus de tours, ou monte tes persos).',
+    reason: winners.length ? ''
+      : timedOut
+        ? `Budget de temps atteint : ${tested} équipe(s) testée(s) sur ${teams.length}, aucune ne nettoie la carte sans perte. Essaie plus de tours, ou monte tes persos.`
+        : `Aucune des ${teams.length} équipe(s) possibles ne nettoie la carte sans perte (essaie plus de tours, ou monte tes persos).`,
   };
 }
