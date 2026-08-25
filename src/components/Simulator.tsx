@@ -566,7 +566,7 @@ export function Simulator({
       const wmap = await fetchTeamWeapons(ranked.map((x) => x.h.id), userId);
       const pool: SearchUnit[] = ranked.map(({ h, s }) => {
         const wi = wmap.get(h.id) ?? NO_WI;
-        const hero = { id: h.id, name: h.name, title: h.title, color: h.color, weaponType: h.weaponType, moveType: h.moveType, rarity: 5, origin: '' } as Hero;
+        const hero = { id: h.id, name: h.name, title: h.title, color: h.color, weaponType: h.weaponType, moveType: h.moveType, rarity: 5, origin: '', colorUrl: h.colorUrl, weaponUrl: h.weaponUrl } as Hero;
         return { id: h.id, name: h.name, title: h.title, unit: { hero, stats: s, mods: toMods(wi.effects, wi.effAgainst) } };
       });
 
@@ -672,6 +672,7 @@ export function Simulator({
         const wi = wmap.get(h.id) ?? NO_WI;
         const hero = { id: h.id, name: h.name, title: h.title, color: h.color, weaponType: h.weaponType, moveType: h.moveType, rarity: 5, origin: '' } as Hero;
         const bs = built(s);
+        hero.colorUrl = h.colorUrl; hero.weaponUrl = h.weaponUrl; // icônes réelles pour l'affichage
         const mods = gapFill(hero, bs, toMods(wi.effects, wi.effAgainst));
         theoryUnits.current.set(h.id, { stats: bs, mods }); // pour « charger » un héros non possédé
         return { id: h.id, name: h.name, title: h.title, unit: { hero, stats: bs, mods } };
@@ -1020,15 +1021,16 @@ export function Simulator({
                                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                                       <span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-warm-dim">
                                         {t.names.map((n, j) => {
-                                          const mh = byId.get(t.ids[j]);
+                                          const cUrl = t.colorUrls?.[j] ?? byId.get(t.ids[j])?.colorUrl;
+                                          const wUrl = t.weaponUrls?.[j] ?? byId.get(t.ids[j])?.weaponUrl;
                                           return (
                                           <span key={j} className="inline-flex items-center gap-0.5">
-                                            {mh?.colorUrl ? (
-                                              <img src={mh.colorUrl} alt={t.colors?.[j]} title={t.colors?.[j]} className="inline-block h-3.5 w-3.5 object-contain align-middle" />
+                                            {cUrl ? (
+                                              <img src={cUrl} alt={t.colors?.[j]} title={t.colors?.[j]} className="inline-block h-3.5 w-3.5 object-contain align-middle" />
                                             ) : (
                                               <span className={`inline-block h-2.5 w-2.5 rounded-full ring-1 ring-black/40 ${COLOR_DOT[t.colors?.[j]] ?? 'bg-white/40'}`} title={t.colors?.[j]} />
                                             )}
-                                            <WeaponIcon type={(mh?.weaponType ?? t.weapons?.[j]) as WeaponType} iconUrl={mh?.weaponUrl} size={14} />
+                                            <WeaponIcon type={t.weapons?.[j] as WeaponType} iconUrl={wUrl} size={14} />
                                             <span>{n}{t.titles?.[j] ? <span className="text-warm-mute/70"> : {t.titles[j]}</span> : null}</span>
                                             {builtIds.has(t.ids[j]) ? (
                                               <span title="Build enregistré (kit exact)" className="rounded bg-emerald-500/25 px-1 text-[8.5px] font-semibold text-emerald-200">build</span>
