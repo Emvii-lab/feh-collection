@@ -998,7 +998,7 @@ export function Simulator({
                               <p className="mt-1 text-[9.5px] text-warm-mute/70">
                                 {searchRes.tested} équipe(s) testée(s) sur {searchRes.poolSize} candidats.
                                 {searchScope === 'game'
-                                  ? ' Héros du jeu supposés bien montés : +10 fusions/dragonflowers/IV, spéciale, ET compétences A/B/C (Fury, réduction de dégâts, Distant Counter, doublon garanti…) selon leur profil, sur ≥6 tours — indication de qui viser, à obtenir/monter.'
+                                  ? ' Héros évalués avec leur VRAI kit natif (arme + spéciale + passives A/B/C lus du learnset), montés (+10 fusions/dragonflowers/IV) et les essentiels qu\'on inherit (riposte à distance, réduction), sur ≥6 tours — indication de qui viser, à obtenir/monter.'
                                   : <> <span className="text-emerald-300/70">build</span> = kit exact · <span className="text-warm-mute">arme</span> = estimation.</>}
                                 {' '}Plans valables si l'IA joue standard.
                               </p>
