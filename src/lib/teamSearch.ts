@@ -4,13 +4,17 @@
 // (dégâts cumulés vs PV de chaque ennemi) écarte instantanément les équipes qui ne
 // peuvent physiquement pas tuer tout le monde, et seules les équipes crédibles passent
 // par le solveur lourd. Budget de temps global pour ne pas figer le navigateur.
-import { solve } from './solver';
+import { solve, type PlanTurn } from './solver';
 import { combatVerdict, simulate, type Unit } from './combat';
 import type { Board, BattleUnit } from './battle';
 import type { TerrainMap } from './tactics';
 
 export type SearchUnit = { id: string; name: string; title: string; unit: Unit };
-export type TeamResult = { ids: string[]; names: string[]; titles: string[]; turns: number };
+export type TeamResult = {
+  ids: string[]; names: string[]; titles: string[];
+  colors: string[]; weapons: string[]; // pour les pastilles couleur/arme
+  turns: number; plan: PlanTurn[];      // plan tour par tour de la ligne gagnante
+};
 export type SearchResult = { teams: TeamResult[]; tested: number; poolSize: number; reason: string };
 
 export type SearchOpts = {
@@ -109,7 +113,15 @@ export function searchTeam(
     // survie obligatoire : on ne veut pas d'une « victoire » où un héros meurt.
     const res = solve(board, { maxTurns, nodeBudget: perTeamBudget, timeLimitMs: perTeamMs, allowDeaths: opts.allowDeaths ?? false });
     if (res.win) {
-      winners.push({ ids: team.map((u) => u.id), names: team.map((u) => u.name), titles: team.map((u) => u.title), turns: res.turns.length });
+      winners.push({
+        ids: team.map((u) => u.id),
+        names: team.map((u) => u.name),
+        titles: team.map((u) => u.title),
+        colors: team.map((u) => u.unit.hero.color),
+        weapons: team.map((u) => u.unit.hero.weaponType),
+        turns: res.turns.length,
+        plan: res.turns,
+      });
       if (winners.length >= maxWinners) break;
     }
   }

@@ -5,11 +5,11 @@ import {
   resolveStats, combatVerdict,
   NO_MODS, type Sim, type Unit, type Verdict, type CombatMods,
 } from '../lib/combat';
-import { type SolveResult } from '../lib/solver';
+import { type SolveResult, type PlanTurn } from '../lib/solver';
 import type { SolverResponse } from '../lib/solverWorker';
 import { isRefresher } from '../lib/battle';
 import type { Board, BattleUnit } from '../lib/battle';
-import type { SearchResult, SearchUnit } from '../lib/teamSearch';
+import type { SearchResult, SearchUnit, TeamResult } from '../lib/teamSearch';
 import { fetchTeamWeapons, fetchEnemyCombat, EMPTY_EFFECTS, type WeaponInfo, type EnemyCombat } from '../lib/simWeapons';
 import type { SpecialInfo } from '../lib/skillEffects';
 import {
@@ -52,6 +52,44 @@ const COLORS: { v: Color; label: string }[] = [
 ];
 const WEAPONS: WeaponType[] = ['Sword', 'Lance', 'Axe', 'Tome', 'Bow', 'Dagger', 'Staff', 'Dragon', 'Beast'];
 const MOVES = ['Infantry', 'Cavalry', 'Flying', 'Armored'] as const;
+
+// Pastilles couleur/arme pour les résultats d'équipe.
+const COLOR_DOT: Record<string, string> = {
+  red: 'bg-red-500', blue: 'bg-blue-500', green: 'bg-green-500', colorless: 'bg-neutral-300',
+};
+const WEAPON_ICON: Record<string, string> = {
+  Sword: '⚔️', Lance: '🔱', Axe: '🪓', Tome: '📖', Bow: '🏹',
+  Dagger: '🗡️', Staff: '✚', Dragon: '🐉', Beast: '🐾',
+};
+
+// Plan tour par tour (réutilisé par « Résoudre la carte » ET les équipes trouvées).
+function PlanSteps({ turns }: { turns: PlanTurn[] }) {
+  return (
+    <ol className="mt-1 space-y-1">
+      {turns.map((t, i) => (
+        <li key={i} className="rounded bg-black/25 px-2 py-1">
+          <span className="font-feh text-[10.5px] text-gold-text">Tour {i + 1}</span>
+          <ul className="mt-0.5 space-y-0.5 text-warm-dim">
+            {t.player.filter((m) => m.from !== m.to || m.targetId).map((m, j) => (
+              <li key={j}>
+                {m.name} {m.from}→{m.to}
+                {m.targetName ? ` ⚔ ${m.targetName} (${m.dmg}${m.kills ? ', K.O.' : ''})` : ''}
+              </li>
+            ))}
+          </ul>
+          {t.enemy.filter((m) => m.from !== m.to || m.target).length ? (
+            <p className="mt-1 text-[10px] italic text-amber-300/70">
+              🛡️ IA prévue : {t.enemy
+                .filter((m) => m.from !== m.to || m.target)
+                .map((m) => `${m.name} ${m.from}→${m.to}${m.kills ? ' (tue)' : m.heal ? ' (soigne)' : m.target ? ' (attaque)' : ''}`)
+                .join(' · ')}
+            </p>
+          ) : null}
+        </li>
+      ))}
+    </ol>
+  );
+}
 const EFF = ['flying', 'armored', 'cavalry', 'infantry', 'dragon', 'beast'] as const;
 const EFF_LABEL: Record<string, string> = {
   flying: 'Volant', armored: 'Cuirassé', cavalry: 'Cavalier',
@@ -327,10 +365,20 @@ export function Simulator({
     };
   }
 
+  // Stats + build modélisé des héros hypothétiques du théorycraft, pour pouvoir « charger »
+  // une équipe du jeu (que tu ne possèdes pas) dans le simulateur et l'inspecter à l'identique.
+  const theoryUnits = useRef<Map<string, { stats: Stats; mods: CombatMods }>>(new Map());
+  const [statsOverride, setStatsOverride] = useState<Map<string, Stats>>(new Map());
+  const [modsOverride, setModsOverride] = useState<Map<string, CombatMods>>(new Map());
+
   const buildUnit = (id: string): Unit | null => {
     const h = byId.get(id);
-    const s = h && resolveStats(h, stats.get(id));
+    // Priorité aux stats hypothétiques chargées depuis le théorycraft (héros non possédés).
+    const s = h && (statsOverride.get(id) ?? resolveStats(h, stats.get(id)));
     if (!h || !s) return null;
+    // Équipe du jeu « chargée » : on rejoue le build modélisé tel quel.
+    const mo = modsOverride.get(id);
+    if (mo) return { hero: h, stats: s, mods: mo };
     const wi = weaponInfo.get(id) ?? NO_WI;
     const pu = unitMods.get(id) ?? { atkBuff: 0, guaranteedFollowup: false, dmgReductionPct: 0 };
     const ef = wi.effects; // effets détectés sur TON arme (best-effort, arme seule)
@@ -369,7 +417,7 @@ export function Simulator({
       .filter((r): r is NonNullable<typeof r> => r !== null)
       .sort((a, b) => VERDICT_META[a.verdict].order - VERDICT_META[b.verdict].order);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [team, enemyUnit, weaponInfo, unitMods, stats]);
+  }, [team, enemyUnit, weaponInfo, unitMods, stats, statsOverride, modsOverride]);
 
   // ===== Solveur de carte : construit le plateau, cherche une ligne gagnante (Web Worker).
   const [solving, setSolving] = useState(false);
@@ -410,12 +458,13 @@ export function Simulator({
       team.forEach((id, i) => {
         if (i >= wikiMap.allyPos.length) return;
         const h = byId.get(id);
-        const s = h && resolveStats(h, stats.get(id));
+        const s = h && (statsOverride.get(id) ?? resolveStats(h, stats.get(id)));
         if (!h || !s) return;
         const wi = weaponInfo.get(id) ?? NO_WI;
+        const mo = modsOverride.get(id);
         allyUnits.push({
           id, side: 'ally',
-          unit: { hero: h, stats: s, mods: toMods(wi.effects, wi.effAgainst) },
+          unit: { hero: h, stats: s, mods: mo ?? toMods(wi.effects, wi.effAgainst) },
           pos: wikiMap.allyPos[i].toLowerCase(), hp: s.hp, active: true,
         });
       });
@@ -461,12 +510,32 @@ export function Simulator({
   const [searchProg, setSearchProg] = useState({ tested: 0, total: 0 });
   const [builtIds, setBuiltIds] = useState<Set<string>>(new Set()); // persos au build enregistré
   const [searchScope, setSearchScope] = useState<'roster' | 'game'>('roster'); // collection vs tout le jeu
+  const [openPlan, setOpenPlan] = useState<number | null>(null); // équipe dont le plan est déplié
+
+  // Charge une équipe trouvée dans le simulateur. Pour le théorycraft (héros non
+  // possédés), on injecte leurs stats montées + leur kit natif pour pouvoir les inspecter.
+  const loadTeam = (t: TeamResult) => {
+    if (searchScope === 'game') {
+      setStatsOverride((prev) => {
+        const so = new Map(prev);
+        t.ids.forEach((id) => { const u = theoryUnits.current.get(id); if (u) so.set(id, u.stats); });
+        return so;
+      });
+      setModsOverride((prev) => {
+        const mo = new Map(prev);
+        t.ids.forEach((id) => { const u = theoryUnits.current.get(id); if (u) mo.set(id, u.mods); });
+        return mo;
+      });
+    }
+    setTeam(t.ids);
+  };
 
   const runTeamSearch = async () => {
     if (!wikiMap) return;
     setSearching(true);
     setSearchScope('roster');
     setSearchRes(null);
+    setOpenPlan(null);
     setSearchProg({ tested: 0, total: 0 });
     try {
       const foes = wikiMap.difficulties[wikiDiff] ?? [];
@@ -554,6 +623,7 @@ export function Simulator({
     setSearching(true);
     setSearchScope('game');
     setSearchRes(null);
+    setOpenPlan(null);
     setSearchProg({ tested: 0, total: 0 });
     setBuiltIds(new Set());
     try {
@@ -600,11 +670,14 @@ export function Simulator({
         if (bulky) m.dmgReductionPct = Math.max(base.dmgReductionPct || 0, 25); // B de réduction inherit
         return m;
       };
+      theoryUnits.current = new Map();
       const pool: SearchUnit[] = ranked.map(({ h, s }) => {
         const wi = wmap.get(h.id) ?? NO_WI;
         const hero = { id: h.id, name: h.name, title: h.title, color: h.color, weaponType: h.weaponType, moveType: h.moveType, rarity: 5, origin: '' } as Hero;
         const bs = built(s);
-        return { id: h.id, name: h.name, title: h.title, unit: { hero, stats: bs, mods: gapFill(hero, bs, toMods(wi.effects, wi.effAgainst)) } };
+        const mods = gapFill(hero, bs, toMods(wi.effects, wi.effAgainst));
+        theoryUnits.current.set(h.id, { stats: bs, mods }); // pour « charger » un héros non possédé
+        return { id: h.id, name: h.name, title: h.title, unit: { hero, stats: bs, mods } };
       });
 
       const passive = /passive/i.test(wikiMap.globalai || '');
@@ -873,29 +946,7 @@ export function Simulator({
                                 <p className="font-feh font-semibold text-emerald-300">
                                   ✅ Gagnable en {solveRes.turns.length} tour(s) — plan :
                                 </p>
-                                <ol className="mt-1 space-y-1">
-                                  {solveRes.turns.map((t, i) => (
-                                    <li key={i} className="rounded bg-black/25 px-2 py-1">
-                                      <span className="font-feh text-[10.5px] text-gold-text">Tour {i + 1}</span>
-                                      <ul className="mt-0.5 space-y-0.5 text-warm-dim">
-                                        {t.player.filter((m) => m.from !== m.to || m.targetId).map((m, j) => (
-                                          <li key={j}>
-                                            {m.name} {m.from}→{m.to}
-                                            {m.targetName ? ` ⚔ ${m.targetName} (${m.dmg}${m.kills ? ', K.O.' : ''})` : ''}
-                                          </li>
-                                        ))}
-                                      </ul>
-                                      {t.enemy.filter((m) => m.from !== m.to || m.target).length ? (
-                                        <p className="mt-1 text-[10px] italic text-amber-300/70">
-                                          🛡️ IA prévue : {t.enemy
-                                            .filter((m) => m.from !== m.to || m.target)
-                                            .map((m) => `${m.name} ${m.from}→${m.to}${m.kills ? ' (tue)' : m.heal ? ' (soigne)' : m.target ? ' (attaque)' : ''}`)
-                                            .join(' · ')}
-                                        </p>
-                                      ) : null}
-                                    </li>
-                                  ))}
-                                </ol>
+                                <PlanSteps turns={solveRes.turns} />
                                 <p className="mt-1 text-[9.5px] text-warm-mute/70">
                                   {solveRes.nodes} états explorés. « IA prévue » = mouvements ennemis <strong>estimés</strong> par le modèle ; en jeu l'IA peut bouger autrement, ce qui décale le plan.
                                 </p>
@@ -968,29 +1019,52 @@ export function Simulator({
                               </p>
                               <ul className="mt-1 space-y-1">
                                 {searchRes.teams.map((t, i) => (
-                                  <li key={i} className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded bg-black/25 px-2 py-1">
-                                    <span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-warm-dim">
-                                      {t.names.map((n, j) => (
-                                        <span key={j} className="inline-flex items-center gap-0.5">
-                                          <span>{n}{t.titles?.[j] ? <span className="text-warm-mute/70"> : {t.titles[j]}</span> : null}</span>
-                                          {builtIds.has(t.ids[j]) ? (
-                                            <span title="Build enregistré (kit exact)" className="rounded bg-emerald-500/25 px-1 text-[8.5px] font-semibold text-emerald-200">build</span>
-                                          ) : (
-                                            <span title="Kit natif complet du learnset (arme + spéciale + passives), pas un build enregistré" className="rounded bg-white/10 px-1 text-[8.5px] text-warm-mute">kit natif</span>
-                                          )}
-                                          {j < t.names.length - 1 ? <span className="text-warm-mute/50">·</span> : null}
-                                        </span>
-                                      ))}
-                                    </span>
-                                    <span className="text-[10px] text-warm-mute">({t.turns} tour{t.turns > 1 ? 's' : ''})</span>
-                                    {searchScope === 'roster' ? (
-                                      <button
-                                        type="button"
-                                        onClick={() => setTeam(t.ids)}
-                                        className="ml-auto rounded border border-emerald-300/40 bg-emerald-500/15 px-2 py-0.5 text-[10.5px] text-emerald-200 hover:bg-emerald-500/25"
-                                      >
-                                        charger cette équipe
-                                      </button>
+                                  <li key={i} className="rounded bg-black/25 px-2 py-1">
+                                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                      <span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-warm-dim">
+                                        {t.names.map((n, j) => (
+                                          <span key={j} className="inline-flex items-center gap-0.5">
+                                            <span
+                                              className={`inline-block h-2.5 w-2.5 rounded-full ring-1 ring-black/40 ${COLOR_DOT[t.colors?.[j]] ?? 'bg-white/40'}`}
+                                              title={t.colors?.[j]}
+                                            />
+                                            <span title={t.weapons?.[j]}>{WEAPON_ICON[t.weapons?.[j]] ?? ''}</span>
+                                            <span>{n}{t.titles?.[j] ? <span className="text-warm-mute/70"> : {t.titles[j]}</span> : null}</span>
+                                            {builtIds.has(t.ids[j]) ? (
+                                              <span title="Build enregistré (kit exact)" className="rounded bg-emerald-500/25 px-1 text-[8.5px] font-semibold text-emerald-200">build</span>
+                                            ) : (
+                                              <span title="Kit natif complet du learnset (arme + spéciale + passives), pas un build enregistré" className="rounded bg-white/10 px-1 text-[8.5px] text-warm-mute">kit natif</span>
+                                            )}
+                                            {j < t.names.length - 1 ? <span className="text-warm-mute/50">·</span> : null}
+                                          </span>
+                                        ))}
+                                      </span>
+                                      <span className="text-[10px] text-warm-mute">({t.turns} tour{t.turns > 1 ? 's' : ''})</span>
+                                      <div className="ml-auto flex items-center gap-1.5">
+                                        <button
+                                          type="button"
+                                          onClick={() => setOpenPlan(openPlan === i ? null : i)}
+                                          className="rounded border border-amber-300/40 bg-amber-500/10 px-2 py-0.5 text-[10.5px] text-amber-200 hover:bg-amber-500/20"
+                                        >
+                                          {openPlan === i ? '▾ masquer le plan' : '▸ voir le plan'}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => loadTeam(t)}
+                                          title={searchScope === 'game' ? 'Charge ces héros (stats montées + kit natif) dans le simulateur pour les inspecter' : 'Charge cette équipe dans le simulateur'}
+                                          className="rounded border border-emerald-300/40 bg-emerald-500/15 px-2 py-0.5 text-[10.5px] text-emerald-200 hover:bg-emerald-500/25"
+                                        >
+                                          charger cette équipe
+                                        </button>
+                                      </div>
+                                    </div>
+                                    {openPlan === i ? (
+                                      <div className="mt-1.5 border-t border-white/10 pt-1.5">
+                                        <PlanSteps turns={t.plan} />
+                                        <p className="mt-1 text-[9px] text-warm-mute/60">
+                                          « IA prévue » = déplacements ennemis estimés ; en jeu l'IA peut jouer autrement.
+                                        </p>
+                                      </div>
                                     ) : null}
                                   </li>
                                 ))}
@@ -999,7 +1073,7 @@ export function Simulator({
                                 {searchRes.tested} équipe(s) testée(s) sur {searchRes.poolSize} candidats.
                                 {searchScope === 'game'
                                   ? ' Héros évalués avec leur VRAI kit natif (arme + spéciale + passives A/B/C lus du learnset), montés (+10 fusions/dragonflowers/IV) et les essentiels qu\'on inherit (riposte à distance, réduction), sur ≥6 tours — indication de qui viser, à obtenir/monter.'
-                                  : <> <span className="text-emerald-300/70">build</span> = kit exact · <span className="text-warm-mute">arme</span> = estimation.</>}
+                                  : <> <span className="text-emerald-300/70">build</span> = kit exact · <span className="text-warm-mute">kit natif</span> = kit du learnset (sans ton build).</>}
                                 {' '}Plans valables si l'IA joue standard.
                               </p>
                             </div>
