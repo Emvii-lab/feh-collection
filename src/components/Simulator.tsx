@@ -553,9 +553,10 @@ export function Simulator({
         .map((x) => ({ ...x, sc: prefScore(x.h, x.s), built: builds.has(x.h.id) }))
         .sort((a, b) => b.sc - a.sc);
       // Tous les persos buildés (kit complet) + les meilleurs non-buildés, plafonné.
+      // 16 → C(16,4) = 1820 équipes (bon compromis vitesse/couverture).
       const built = scored.filter((x) => x.built);
       const unbuilt = scored.filter((x) => !x.built);
-      const ranked = [...built, ...unbuilt].slice(0, 24);
+      const ranked = [...built, ...unbuilt].slice(0, 16);
       setBuiltIds(new Set(built.map((x) => x.h.id)));
 
       const wmap = await fetchTeamWeapons(ranked.map((x) => x.h.id), userId);
