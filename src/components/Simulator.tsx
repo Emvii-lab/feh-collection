@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { Color, Hero, WeaponType, Stats } from '../types';
+import type { Color, Hero, WeaponType, MoveType, Stats } from '../types';
 import type { CollStats } from '../lib/collection';
 import {
   resolveStats, combatVerdict,
@@ -12,7 +12,7 @@ import type { Board, BattleUnit } from '../lib/battle';
 import type { SearchResult, SearchUnit, TeamResult } from '../lib/teamSearch';
 import { fetchTeamWeapons, fetchEnemyCombat, EMPTY_EFFECTS, type WeaponInfo, type EnemyCombat } from '../lib/simWeapons';
 import type { SpecialInfo } from '../lib/skillEffects';
-import { WeaponIcon } from './icons';
+import { WeaponIcon, MoveIcon } from './icons';
 import {
   fetchWikiMap, parsePageTitle, resolveEnemy, resolveMapImage,
   type WikiEnemy, type WikiMap,
@@ -53,11 +53,6 @@ const COLORS: { v: Color; label: string }[] = [
 ];
 const WEAPONS: WeaponType[] = ['Sword', 'Lance', 'Axe', 'Tome', 'Bow', 'Dagger', 'Staff', 'Dragon', 'Beast'];
 const MOVES = ['Infantry', 'Cavalry', 'Flying', 'Armored'] as const;
-
-// Pastille couleur de repli (si l'icône réelle du héros manque).
-const COLOR_DOT: Record<string, string> = {
-  red: 'bg-red-500', blue: 'bg-blue-500', green: 'bg-green-500', colorless: 'bg-neutral-300',
-};
 
 // Plan tour par tour (réutilisé par « Résoudre la carte » ET les équipes trouvées).
 function PlanSteps({ turns }: { turns: PlanTurn[] }) {
@@ -566,7 +561,7 @@ export function Simulator({
       const wmap = await fetchTeamWeapons(ranked.map((x) => x.h.id), userId);
       const pool: SearchUnit[] = ranked.map(({ h, s }) => {
         const wi = wmap.get(h.id) ?? NO_WI;
-        const hero = { id: h.id, name: h.name, title: h.title, color: h.color, weaponType: h.weaponType, moveType: h.moveType, rarity: 5, origin: '', colorUrl: h.colorUrl, weaponUrl: h.weaponUrl } as Hero;
+        const hero = { id: h.id, name: h.name, title: h.title, color: h.color, weaponType: h.weaponType, moveType: h.moveType, rarity: 5, origin: '', moveUrl: h.moveUrl, weaponUrl: h.weaponUrl } as Hero;
         return { id: h.id, name: h.name, title: h.title, unit: { hero, stats: s, mods: toMods(wi.effects, wi.effAgainst) } };
       });
 
@@ -672,7 +667,7 @@ export function Simulator({
         const wi = wmap.get(h.id) ?? NO_WI;
         const hero = { id: h.id, name: h.name, title: h.title, color: h.color, weaponType: h.weaponType, moveType: h.moveType, rarity: 5, origin: '' } as Hero;
         const bs = built(s);
-        hero.colorUrl = h.colorUrl; hero.weaponUrl = h.weaponUrl; // icônes réelles pour l'affichage
+        hero.moveUrl = h.moveUrl; hero.weaponUrl = h.weaponUrl; // icônes réelles (déplacement + arme)
         const mods = gapFill(hero, bs, toMods(wi.effects, wi.effAgainst));
         theoryUnits.current.set(h.id, { stats: bs, mods }); // pour « charger » un héros non possédé
         return { id: h.id, name: h.name, title: h.title, unit: { hero, stats: bs, mods } };
@@ -1021,15 +1016,11 @@ export function Simulator({
                                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                                       <span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-warm-dim">
                                         {t.names.map((n, j) => {
-                                          const cUrl = t.colorUrls?.[j] ?? byId.get(t.ids[j])?.colorUrl;
+                                          const mUrl = t.moveUrls?.[j] ?? byId.get(t.ids[j])?.moveUrl;
                                           const wUrl = t.weaponUrls?.[j] ?? byId.get(t.ids[j])?.weaponUrl;
                                           return (
                                           <span key={j} className="inline-flex items-center gap-0.5">
-                                            {cUrl ? (
-                                              <img src={cUrl} alt={t.colors?.[j]} title={t.colors?.[j]} className="inline-block h-3.5 w-3.5 object-contain align-middle" />
-                                            ) : (
-                                              <span className={`inline-block h-2.5 w-2.5 rounded-full ring-1 ring-black/40 ${COLOR_DOT[t.colors?.[j]] ?? 'bg-white/40'}`} title={t.colors?.[j]} />
-                                            )}
+                                            <MoveIcon type={t.moves?.[j] as MoveType} iconUrl={mUrl} size={14} />
                                             <WeaponIcon type={t.weapons?.[j] as WeaponType} iconUrl={wUrl} size={14} />
                                             <span>{n}{t.titles?.[j] ? <span className="text-warm-mute/70"> : {t.titles[j]}</span> : null}</span>
                                             {builtIds.has(t.ids[j]) ? (

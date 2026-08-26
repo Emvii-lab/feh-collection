@@ -12,8 +12,8 @@ import type { TerrainMap } from './tactics';
 export type SearchUnit = { id: string; name: string; title: string; unit: Unit };
 export type TeamResult = {
   ids: string[]; names: string[]; titles: string[];
-  colors: string[]; weapons: string[];                 // couleur/arme (repli)
-  colorUrls: (string | undefined)[]; weaponUrls: (string | undefined)[]; // vraies icônes
+  moves: string[]; weapons: string[];                  // type de déplacement/arme (repli)
+  moveUrls: (string | undefined)[]; weaponUrls: (string | undefined)[]; // vraies icônes
   turns: number; plan: PlanTurn[];      // plan tour par tour de la ligne gagnante
 };
 export type SearchResult = { teams: TeamResult[]; tested: number; poolSize: number; reason: string };
@@ -118,9 +118,9 @@ export function searchTeam(
         ids: team.map((u) => u.id),
         names: team.map((u) => u.name),
         titles: team.map((u) => u.title),
-        colors: team.map((u) => u.unit.hero.color),
+        moves: team.map((u) => u.unit.hero.moveType),
         weapons: team.map((u) => u.unit.hero.weaponType),
-        colorUrls: team.map((u) => u.unit.hero.colorUrl),
+        moveUrls: team.map((u) => u.unit.hero.moveUrl),
         weaponUrls: team.map((u) => u.unit.hero.weaponUrl),
         turns: res.turns.length,
         plan: res.turns,
