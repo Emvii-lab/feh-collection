@@ -1210,6 +1210,7 @@ export function Simulator({
                 onRemove={() => toggleMember(r.id)}
                 mods={unitMods.get(r.id) ?? { atkBuff: 0, guaranteedFollowup: false, dmgReductionPct: 0 }}
                 onMods={(m) => setUnitMods((prev) => new Map(prev).set(r.id, m))}
+                weaponInfo={weaponInfo.get(r.id)}
               />
             ))}
           </div>
@@ -1503,11 +1504,11 @@ function MapGrid({
 }
 
 function UnitRow({
-  hero, sim, foe, enemy, unit, expanded, onToggle, onRemove, mods, onMods,
+  hero, sim, foe, enemy, unit, expanded, onToggle, onRemove, mods, onMods, weaponInfo,
 }: {
   hero: Hero; sim: Sim; foe: Sim | null; enemy: Unit; unit: Unit;
   expanded: boolean; onToggle: () => void; onRemove: () => void;
-  mods: UnitMods; onMods: (m: UnitMods) => void;
+  mods: UnitMods; onMods: (m: UnitMods) => void; weaponInfo?: WeaponInfo;
 }) {
   return (
     <div className="rounded-xl border border-white/10 overflow-hidden">
