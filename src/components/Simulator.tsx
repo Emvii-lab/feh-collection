@@ -435,7 +435,9 @@ export function Simulator({
     allyPos: string[], linked: boolean, baseOpts: Record<string, unknown>,
   ) => {
     stopSearchWorkers();
-    const shardCount = Math.max(1, Math.min(navigator.hardwareConcurrency || 4, 6));
+    // Nombre de workers = nb de cœurs logiques, plafonné à 10. Le min() garantit qu'on ne
+    // dépasse JAMAIS les cœurs réels (au-delà : aucun gain, contention + RAM en plus).
+    const shardCount = Math.max(1, Math.min(navigator.hardwareConcurrency || 4, 10));
     const maxWinners = (baseOpts.maxWinners as number) ?? 1;
     const tested = new Array(shardCount).fill(0);
     const allWinners: TeamResult[] = [];
