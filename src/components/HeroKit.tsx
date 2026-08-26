@@ -116,12 +116,15 @@ function weaponSecondary(s: SkillRow): number {
   const m = parseMods(s);
   return m.hp + m.spd + m.def + m.res;
 }
-// Meilleure arme parmi une liste : Dmg, puis stats bonus, puis version supérieure.
-function pickBestWeapon(weapons: SkillRow[]): SkillRow | null {
+// Meilleure arme : on classe sur le PLAFOND de Dmg (meilleur raffinage possible, via
+// `ceilings` lu en base) — une PRF raffinable à 18 bat une commune plafonnée à 16 même
+// non raffinée ; à plafond égal, plus de stats bonus, puis la version supérieure.
+function pickBestWeapon(weapons: SkillRow[], ceilings?: Map<string, number>): SkillRow | null {
   if (weapons.length === 0) return null;
   const sup = supersededSet(weapons);
+  const dmgOf = (w: SkillRow) => Math.max(effMight(w), ceilings?.get(w.name) ?? 0);
   return weapons.reduce((a, b) => {
-    const ea = effMight(a), eb = effMight(b);
+    const ea = dmgOf(a), eb = dmgOf(b);
     if (eb !== ea) return eb > ea ? b : a;
     const sa = weaponSecondary(a), sb = weaponSecondary(b);
     if (sb !== sa) return sb > sa ? b : a;
@@ -225,31 +228,39 @@ export function HeroKit({
     };
   }, [heroId, userId]);
 
-  // Raffinages disponibles pour la meilleure arme du héros.
-  const [refinePaths, setRefinePaths] = useState<string[]>([]);
+  // Pour CHAQUE arme du héros, on lit dans toute la base ses variantes raffinées :
+  // - le PLAFOND de Dmg (meilleur raffinage possible) → sert au classement, pour qu'une
+  //   PRF raffinable à 18 batte une commune plafonnée à 16, même si tu ne l'as pas raffinée.
+  // - les chemins de raffinage dispo (atk/spd/def/res/effet) → pour le conseil de forge.
+  const [refineData, setRefineData] = useState<{ ceilings: Map<string, number>; pathsByName: Map<string, string[]> }>(
+    { ceilings: new Map(), pathsByName: new Map() },
+  );
   useEffect(() => {
     const ws = (skills ?? []).filter((s) => s.scategory === 'weapon');
-    const best = pickBestWeapon(ws);
-    if (!supabase || !best) {
-      setRefinePaths([]);
+    if (!supabase || ws.length === 0) {
+      setRefineData({ ceilings: new Map(), pathsByName: new Map() });
       return;
     }
+    const names = [...new Set(ws.map((w) => w.name))];
     let active = true;
     supabase
       .from('skills')
-      .select('refine_path')
+      .select('name,might,stat_modifiers,description,refine_path')
       .eq('scategory', 'weapon')
-      .eq('name', best.name)
-      .not('refine_path', 'is', null)
+      .in('name', names)
       .then(({ data }) => {
-        if (active)
-          setRefinePaths([
-            ...new Set(
-              (data ?? [])
-                .map((r) => r.refine_path as string)
-                .filter(Boolean),
-            ),
-          ]);
+        if (!active) return;
+        const ceilings = new Map<string, number>();
+        const pathsByName = new Map<string, string[]>();
+        for (const r of (data ?? []) as SkillRow[]) {
+          ceilings.set(r.name, Math.max(ceilings.get(r.name) ?? 0, effMight(r)));
+          if (r.refine_path) {
+            const arr = pathsByName.get(r.name) ?? [];
+            if (!arr.includes(r.refine_path)) arr.push(r.refine_path);
+            pathsByName.set(r.name, arr);
+          }
+        }
+        setRefineData({ ceilings, pathsByName });
       });
     return () => {
       active = false;
@@ -303,7 +314,7 @@ export function HeroKit({
   // (Dmg 16 + PV5) bat l'Épée sans nom de base (Dmg 16, 0 bonus) à effet identique ; en
   // dernier recours, la version supérieure de la chaîne (le +).
   const weapons = skills.filter((s) => s.scategory === 'weapon');
-  const bestWeapon = pickBestWeapon(weapons);
+  const bestWeapon = pickBestWeapon(weapons, refineData.ceilings);
 
   // Compétence conseillée par slot = version la plus haute (SP max, et la version
   // supérieure de la chaîne d'amélioration à SP égal).
@@ -323,7 +334,7 @@ export function HeroKit({
 
   const advice = orientation(stats);
   const seal = sealPick ?? null;
-  const refineText = refineAdvice(stats, refinePaths);
+  const refineText = refineAdvice(stats, bestWeapon ? refineData.pathsByName.get(bestWeapon.name) ?? [] : []);
 
   return (
     <>
@@ -473,6 +484,11 @@ export function HeroKit({
                         {extraMods ? (
                           <span className="font-feh text-[11px] text-sky-300/90" title="Bonus de stats (raffinage inclus)">
                             {extraMods}
+                          </span>
+                        ) : null}
+                        {isBest && dmgVal != null && (refineData.ceilings.get(s.name) ?? 0) > dmgVal ? (
+                          <span className="font-feh text-[10px] text-gold-light/80" title="Dmg atteignable une fois raffinée (raffinage ATQ)">
+                            → Dmg {refineData.ceilings.get(s.name)} raffinée
                           </span>
                         ) : null}
                         <WeaponEff w={s} size={16} />
