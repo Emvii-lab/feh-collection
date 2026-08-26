@@ -21,6 +21,8 @@ export type SearchResult = { teams: TeamResult[]; tested: number; poolSize: numb
 export type SearchOpts = {
   maxTurns?: number; topK?: number; perTeamBudget?: number; perTeamMs?: number;
   maxWinners?: number; allowDeaths?: boolean; globalMs?: number;
+  // Parallélisation : ce worker ne teste que les combos dont l'index ≡ shard [shardCount].
+  shard?: number; shardCount?: number;
 };
 
 // k-combinaisons d'un tableau.
@@ -51,6 +53,8 @@ export function searchTeam(
   const maxWinners = opts.maxWinners ?? 3;
   const globalMs = opts.globalMs ?? 120_000;      // budget total (on teste dans l'ordre)
   const globalDeadline = Date.now() + globalMs;
+  const shard = opts.shard ?? 0;
+  const shardCount = opts.shardCount ?? 1;
   // topK = combien de héros on garde pour former les combos. Par défaut : TOUT le pool
   // → on teste réellement toutes les combinaisons de 4 (C(pool,4)), pas un sous-ensemble.
   const topK = opts.topK ?? pool.length;
@@ -100,7 +104,9 @@ export function searchTeam(
 
   const winners: TeamResult[] = [];
   let tested = 0, solved = 0, timedOut = false;
-  for (const team of teams) {
+  for (let ti = 0; ti < teams.length; ti++) {
+    if (shardCount > 1 && ti % shardCount !== shard) continue; // ce shard n'a que ses combos
+    const team = teams[ti];
     if (Date.now() > globalDeadline) { timedOut = true; break; }
     tested++;
     onProgress?.(tested, teams.length);

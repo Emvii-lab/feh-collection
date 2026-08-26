@@ -417,9 +417,66 @@ export function Simulator({
   const [solveTurns, setSolveTurns] = useState(3);
   const [solveNodes, setSolveNodes] = useState(0);
   const workerRef = useRef<Worker | null>(null);
+  const searchWorkersRef = useRef<Worker[]>([]); // recherche d'équipe parallélisée (N workers)
   const solveStart = useRef(0); // horodatage de départ (jauge de temps)
   const solveLimit = useRef(15_000); // limite de temps utilisée
-  useEffect(() => () => workerRef.current?.terminate(), []); // nettoyage à la fermeture
+  useEffect(() => () => { workerRef.current?.terminate(); searchWorkersRef.current.forEach((w) => w.terminate()); }, []); // nettoyage
+
+  const stopSearchWorkers = () => {
+    searchWorkersRef.current.forEach((w) => w.terminate());
+    searchWorkersRef.current = [];
+  };
+
+  // Lance la recherche d'équipe en PARALLÈLE sur plusieurs workers (un par cœur, max 4) :
+  // chaque worker teste une part disjointe des combos (shard). On agrège les gagnantes et
+  // on arrête tout dès qu'on en a assez.
+  const launchShardedSearch = (
+    pool: SearchUnit[], enemyUnits: BattleUnit[], terrain: TerrainMap,
+    allyPos: string[], linked: boolean, baseOpts: Record<string, unknown>,
+  ) => {
+    stopSearchWorkers();
+    const shardCount = Math.max(1, Math.min(navigator.hardwareConcurrency || 4, 4));
+    const maxWinners = (baseOpts.maxWinners as number) ?? 3;
+    const tested = new Array(shardCount).fill(0);
+    const allWinners: TeamResult[] = [];
+    let done = 0, finished = false;
+    const finalize = () => {
+      if (finished) return;
+      finished = true;
+      stopSearchWorkers();
+      const seen = new Set<string>();
+      const uniq = allWinners
+        .filter((w) => { const k = [...w.ids].sort().join('|'); if (seen.has(k)) return false; seen.add(k); return true; })
+        .sort((a, b) => a.turns - b.turns)
+        .slice(0, maxWinners);
+      setSearchRes({
+        teams: uniq, tested: tested.reduce((a, b) => a + b, 0), poolSize: pool.length,
+        reason: uniq.length ? '' : 'Aucune équipe testée ne nettoie la carte sans perte (essaie plus de tours, ou monte tes persos).',
+      });
+      setSearching(false);
+    };
+    for (let k = 0; k < shardCount; k++) {
+      const worker = new Worker(new URL('../lib/solverWorker.ts', import.meta.url), { type: 'module' });
+      searchWorkersRef.current.push(worker);
+      worker.onmessage = (ev: MessageEvent<SolverResponse>) => {
+        const msg = ev.data;
+        if (msg.type === 'searchProgress') {
+          tested[k] = msg.tested;
+          setSearchProg({ tested: tested.reduce((a, b) => a + b, 0), total: msg.total });
+        } else if (msg.type === 'searchDone') {
+          allWinners.push(...msg.result.teams);
+          done++;
+          if (allWinners.length >= maxWinners || done >= shardCount) finalize();
+        }
+      };
+      worker.postMessage({
+        kind: 'search', pool, enemies: enemyUnits, terrain, allyPos, linked,
+        // chaque shard s'arrête à sa 1re gagnante (best-first) et la remonte tout de
+        // suite → le thread principal agrège vite jusqu'à `maxWinners` équipes.
+        opts: { ...baseOpts, shard: k, shardCount, maxWinners: 2 },
+      });
+    }
+  };
 
   const runSolver = async () => {
     if (!wikiMap) return;
@@ -587,22 +644,8 @@ export function Simulator({
         setSearching(false);
         return;
       }
-      workerRef.current?.terminate();
-      const worker = new Worker(new URL('../lib/solverWorker.ts', import.meta.url), { type: 'module' });
-      workerRef.current = worker;
-      worker.onmessage = (ev: MessageEvent<SolverResponse>) => {
-        const msg = ev.data;
-        if (msg.type === 'searchProgress') setSearchProg({ tested: msg.tested, total: msg.total });
-        else if (msg.type === 'searchDone') {
-          setSearchRes(msg.result);
-          setSearching(false);
-          worker.terminate();
-          if (workerRef.current === worker) workerRef.current = null;
-        }
-      };
-      worker.postMessage({
-        kind: 'search', pool, enemies: enemyUnits, terrain, allyPos: wikiMap.allyPos, linked,
-        opts: { maxTurns: Math.max(solveTurns, 6), perTeamBudget: 500_000, perTeamMs: 2500, globalMs: 150_000, allowDeaths: false },
+      launchShardedSearch(pool, enemyUnits, terrain, wikiMap.allyPos, linked, {
+        maxTurns: Math.max(solveTurns, 6), perTeamBudget: 400_000, perTeamMs: 1500, globalMs: 150_000, allowDeaths: false, maxWinners: 3,
       });
     } catch {
       setSearchRes({ teams: [], tested: 0, poolSize: 0, reason: 'Erreur pendant la préparation de la recherche.' });
@@ -690,22 +733,8 @@ export function Simulator({
           pos: e.pos.toLowerCase(), hp: e.hp, active: !passive, refresher: isRefresher(e.skills),
         };
       });
-      workerRef.current?.terminate();
-      const worker = new Worker(new URL('../lib/solverWorker.ts', import.meta.url), { type: 'module' });
-      workerRef.current = worker;
-      worker.onmessage = (ev: MessageEvent<SolverResponse>) => {
-        const msg = ev.data;
-        if (msg.type === 'searchProgress') setSearchProg({ tested: msg.tested, total: msg.total });
-        else if (msg.type === 'searchDone') {
-          setSearchRes(msg.result);
-          setSearching(false);
-          worker.terminate();
-          if (workerRef.current === worker) workerRef.current = null;
-        }
-      };
-      worker.postMessage({
-        kind: 'search', pool, enemies: enemyUnits, terrain, allyPos: wikiMap.allyPos, linked,
-        opts: { maxTurns: Math.max(solveTurns, 6), perTeamBudget: 500_000, perTeamMs: 2500, globalMs: 150_000, allowDeaths: false },
+      launchShardedSearch(pool, enemyUnits, terrain, wikiMap.allyPos, linked, {
+        maxTurns: Math.max(solveTurns, 6), perTeamBudget: 400_000, perTeamMs: 1500, globalMs: 150_000, allowDeaths: false, maxWinners: 3,
       });
     } catch {
       setSearchRes({ teams: [], tested: 0, poolSize: 0, reason: 'Erreur pendant la préparation du théorycraft.' });
@@ -987,8 +1016,7 @@ export function Simulator({
                             <button
                               type="button"
                               onClick={() => {
-                                workerRef.current?.terminate();
-                                workerRef.current = null;
+                                stopSearchWorkers();
                                 setSearching(false);
                                 setSearchRes({ teams: [], tested: searchProg.tested, poolSize: 0, reason: 'Recherche arrêtée.' });
                               }}
