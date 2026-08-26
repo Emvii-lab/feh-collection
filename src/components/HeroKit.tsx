@@ -111,6 +111,23 @@ function effMight(w: SkillRow): number {
   const m = weaponDmg(w);
   return isBrave(w.description) ? Math.round(m * 1.9) : m;
 }
+// Départage à Dmg égal : la somme des autres stats bonus (PV/VIT/DÉF/RÉS).
+function weaponSecondary(s: SkillRow): number {
+  const m = parseMods(s);
+  return m.hp + m.spd + m.def + m.res;
+}
+// Meilleure arme parmi une liste : Dmg, puis stats bonus, puis version supérieure.
+function pickBestWeapon(weapons: SkillRow[]): SkillRow | null {
+  if (weapons.length === 0) return null;
+  const sup = supersededSet(weapons);
+  return weapons.reduce((a, b) => {
+    const ea = effMight(a), eb = effMight(b);
+    if (eb !== ea) return eb > ea ? b : a;
+    const sa = weaponSecondary(a), sb = weaponSecondary(b);
+    if (sb !== sa) return sb > sa ? b : a;
+    return sup.has(a.wiki_name) && !sup.has(b.wiki_name) ? b : a;
+  });
+}
 function weaponReason(w: SkillRow): string[] {
   const r: string[] = [];
   if (isBrave(w.description)) r.push('×2 attaques');
@@ -212,11 +229,11 @@ export function HeroKit({
   const [refinePaths, setRefinePaths] = useState<string[]>([]);
   useEffect(() => {
     const ws = (skills ?? []).filter((s) => s.scategory === 'weapon');
-    if (!supabase || ws.length === 0) {
+    const best = pickBestWeapon(ws);
+    if (!supabase || !best) {
       setRefinePaths([]);
       return;
     }
-    const best = ws.reduce((a, b) => (effMight(b) > effMight(a) ? b : a));
     let active = true;
     supabase
       .from('skills')
@@ -286,23 +303,7 @@ export function HeroKit({
   // (Dmg 16 + PV5) bat l'Épée sans nom de base (Dmg 16, 0 bonus) à effet identique ; en
   // dernier recours, la version supérieure de la chaîne (le +).
   const weapons = skills.filter((s) => s.scategory === 'weapon');
-  const secondary = (s: SkillRow): number => {
-    const m = parseMods(s);
-    return m.hp + m.spd + m.def + m.res;
-  };
-  const bestWeapon = (() => {
-    if (weapons.length === 0) return null;
-    const sup = supersededSet(weapons);
-    return weapons.reduce((a, b) => {
-      const ea = effMight(a);
-      const eb = effMight(b);
-      if (eb !== ea) return eb > ea ? b : a;
-      const sa = secondary(a);
-      const sb = secondary(b);
-      if (sb !== sa) return sb > sa ? b : a;
-      return sup.has(a.wiki_name) && !sup.has(b.wiki_name) ? b : a;
-    });
-  })();
+  const bestWeapon = pickBestWeapon(weapons);
 
   // Compétence conseillée par slot = version la plus haute (SP max, et la version
   // supérieure de la chaîne d'amélioration à SP égal).
