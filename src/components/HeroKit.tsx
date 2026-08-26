@@ -281,8 +281,15 @@ export function HeroKit({
     );
   }
 
-  // Meilleure arme (en général) = plus gros Dmg ; à Dmg égal, la version supérieure (le +).
+  // Meilleure arme = plus gros Dmg (ATQ, raffinage inclus) ; À DMG ÉGAL, on préfère celle
+  // qui apporte le plus de stats bonus (PV/VIT/DÉF/RÉS) — ex. un Fer meurtrier raffiné ATQ
+  // (Dmg 16 + PV5) bat l'Épée sans nom de base (Dmg 16, 0 bonus) à effet identique ; en
+  // dernier recours, la version supérieure de la chaîne (le +).
   const weapons = skills.filter((s) => s.scategory === 'weapon');
+  const secondary = (s: SkillRow): number => {
+    const m = parseMods(s);
+    return m.hp + m.spd + m.def + m.res;
+  };
   const bestWeapon = (() => {
     if (weapons.length === 0) return null;
     const sup = supersededSet(weapons);
@@ -290,6 +297,9 @@ export function HeroKit({
       const ea = effMight(a);
       const eb = effMight(b);
       if (eb !== ea) return eb > ea ? b : a;
+      const sa = secondary(a);
+      const sb = secondary(b);
+      if (sb !== sa) return sb > sa ? b : a;
       return sup.has(a.wiki_name) && !sup.has(b.wiki_name) ? b : a;
     });
   })();
