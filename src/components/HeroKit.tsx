@@ -492,11 +492,6 @@ export function HeroKit({
                             {extraMods}
                           </span>
                         ) : null}
-                        {isBest && dmgVal != null && (refineData.ceilings.get(s.name) ?? 0) > dmgVal ? (
-                          <span className="font-feh text-[10px] text-gold-light/80" title="Dmg atteignable une fois raffinée (raffinage ATQ)">
-                            → Dmg {refineData.ceilings.get(s.name)} raffinée
-                          </span>
-                        ) : null}
                         <WeaponEff w={s} size={16} />
                       </div>
                     </div>
