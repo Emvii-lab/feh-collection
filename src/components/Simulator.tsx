@@ -435,8 +435,8 @@ export function Simulator({
     allyPos: string[], linked: boolean, baseOpts: Record<string, unknown>,
   ) => {
     stopSearchWorkers();
-    const shardCount = Math.max(1, Math.min(navigator.hardwareConcurrency || 4, 4));
-    const maxWinners = (baseOpts.maxWinners as number) ?? 3;
+    const shardCount = Math.max(1, Math.min(navigator.hardwareConcurrency || 4, 6));
+    const maxWinners = (baseOpts.maxWinners as number) ?? 1;
     const tested = new Array(shardCount).fill(0);
     const allWinners: TeamResult[] = [];
     let done = 0, finished = false;
@@ -472,8 +472,8 @@ export function Simulator({
       worker.postMessage({
         kind: 'search', pool, enemies: enemyUnits, terrain, allyPos, linked,
         // chaque shard s'arrête à sa 1re gagnante (best-first) et la remonte tout de
-        // suite → le thread principal agrège vite jusqu'à `maxWinners` équipes.
-        opts: { ...baseOpts, shard: k, shardCount, maxWinners: 2 },
+        // suite → dès qu'un shard trouve un clear, le principal finalise (maxWinners=1).
+        opts: { ...baseOpts, shard: k, shardCount, maxWinners: 1 },
       });
     }
   };
@@ -645,7 +645,7 @@ export function Simulator({
         return;
       }
       launchShardedSearch(pool, enemyUnits, terrain, wikiMap.allyPos, linked, {
-        maxTurns: Math.max(solveTurns, 6), perTeamBudget: 400_000, perTeamMs: 1500, globalMs: 150_000, allowDeaths: false, maxWinners: 3,
+        maxTurns: Math.max(solveTurns, 6), perTeamBudget: 400_000, perTeamMs: 1500, globalMs: 150_000, allowDeaths: false, maxWinners: 1,
       });
     } catch {
       setSearchRes({ teams: [], tested: 0, poolSize: 0, reason: 'Erreur pendant la préparation de la recherche.' });
@@ -734,7 +734,7 @@ export function Simulator({
         };
       });
       launchShardedSearch(pool, enemyUnits, terrain, wikiMap.allyPos, linked, {
-        maxTurns: Math.max(solveTurns, 6), perTeamBudget: 400_000, perTeamMs: 1500, globalMs: 150_000, allowDeaths: false, maxWinners: 3,
+        maxTurns: Math.max(solveTurns, 6), perTeamBudget: 400_000, perTeamMs: 1500, globalMs: 150_000, allowDeaths: false, maxWinners: 1,
       });
     } catch {
       setSearchRes({ teams: [], tested: 0, poolSize: 0, reason: 'Erreur pendant la préparation du théorycraft.' });
@@ -1037,7 +1037,9 @@ export function Simulator({
                           searchRes.teams.length ? (
                             <div className="mt-2 text-[11.5px]">
                               <p className="font-feh font-semibold text-emerald-300">
-                                ✅ {searchRes.teams.length} équipe(s) qui nettoie(nt) la carte{searchScope === 'game' ? ' (héros du jeu)' : ''} :
+                                ✅ {searchRes.teams.length > 1
+                                  ? `${searchRes.teams.length} équipes qui nettoient la carte`
+                                  : 'Meilleure équipe trouvée'}{searchScope === 'game' ? ' (héros du jeu)' : ''} :
                               </p>
                               <ul className="mt-1 space-y-1">
                                 {searchRes.teams.map((t, i) => (
