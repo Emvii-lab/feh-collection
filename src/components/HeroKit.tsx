@@ -83,10 +83,32 @@ const isBrave = (d: string | null) => /attacks?\s+twice|brave/i.test(d ?? '');
 const isSlaying = (d: string | null) =>
   /accelerates special|slaying|special cooldown charge/i.test(d ?? '');
 
-// Classement d'arme = le Dmg (puissance) prime. Seul Brave (≈ ×2 coups) augmente
-// le Dmg réel ; l'efficacité (situationnelle) et le slaying ne comptent PAS ici.
+// stat_modifiers = "HP,ATK,SPD,DEF,RES" (inclut le raffinage, ex. raffinage ATQ → +ATQ).
+function parseMods(s: SkillRow): { hp: number; atk: number; spd: number; def: number; res: number } {
+  const p = (s.stat_modifiers ?? '').split(',').map((x) => parseInt(x, 10) || 0);
+  return { hp: p[0] ?? 0, atk: p[1] ?? 0, spd: p[2] ?? 0, def: p[3] ?? 0, res: p[4] ?? 0 };
+}
+// Dmg réel d'une arme = l'ATQ des stat_modifiers (prend en compte le raffinage ATQ) ;
+// repli sur `might` si absent.
+function weaponDmg(s: SkillRow): number {
+  return parseMods(s).atk || s.might || 0;
+}
+// Stats bonus À AFFICHER en plus du Dmg (l'ATQ est déjà le Dmg) : PV/VIT/DÉF/RÉS non nuls.
+function extraModsLabel(s: SkillRow): string {
+  const m = parseMods(s);
+  return [
+    m.hp ? `PV+${m.hp}` : '',
+    m.spd ? `VIT+${m.spd}` : '',
+    m.def ? `DÉF+${m.def}` : '',
+    m.res ? `RÉS+${m.res}` : '',
+  ].filter(Boolean).join(' ');
+}
+
+// Classement d'arme = le Dmg (puissance) prime — Dmg = ATQ raffinage compris. Seul Brave
+// (≈ ×2 coups) augmente le Dmg réel ; l'efficacité (situationnelle) et le slaying ne
+// comptent PAS ici.
 function effMight(w: SkillRow): number {
-  const m = w.might ?? 0;
+  const m = weaponDmg(w);
   return isBrave(w.description) ? Math.round(m * 1.9) : m;
 }
 function weaponReason(w: SkillRow): string[] {
@@ -383,6 +405,8 @@ export function HeroKit({
                   bestPerSlot.get(cat.key) === s.wiki_name;
                 const highlight = isBest || isReco;
                 const reasons = cat.key === 'weapon' ? weaponReason(s) : [];
+                const dmgVal = cat.key === 'weapon' ? weaponDmg(s) : s.might;
+                const extraMods = cat.key === 'weapon' ? extraModsLabel(s) : '';
                 return (
                   <div
                     key={s.wiki_name}
@@ -429,12 +453,17 @@ export function HeroKit({
                         ) : null}
                         <span className="font-feh text-[11px] text-warm-mute">
                           {[
-                            s.might != null ? `Dmg ${s.might}` : null,
+                            dmgVal != null ? `Dmg ${dmgVal}` : null,
                             s.cooldown != null ? `CD ${s.cooldown}` : null,
                           ]
                             .filter(Boolean)
                             .join(' · ')}
                         </span>
+                        {extraMods ? (
+                          <span className="font-feh text-[11px] text-sky-300/90" title="Bonus de stats (raffinage inclus)">
+                            {extraMods}
+                          </span>
+                        ) : null}
                         <WeaponEff w={s} size={16} />
                       </div>
                     </div>
@@ -483,8 +512,10 @@ export function HeroKit({
               </div>
               <div className="text-[11px] text-warm-mute">
                 {CAT_LABEL[detail.scategory] ?? detail.scategory}
-                {detail.might != null ? ` · Dmg ${detail.might}` : ''}
+                {(detail.scategory === 'weapon' ? weaponDmg(detail) : detail.might) != null
+                  ? ` · Dmg ${detail.scategory === 'weapon' ? weaponDmg(detail) : detail.might}` : ''}
                 {detail.cooldown != null ? ` · CD ${detail.cooldown}` : ''}
+                {detail.scategory === 'weapon' && extraModsLabel(detail) ? ` · ${extraModsLabel(detail)}` : ''}
                 {detail.sp != null ? ` · ${detail.sp} SP` : ''}
                 {detail.unlock_rarity ? (
                   <span className={rarityClass(detail.unlock_rarity)}>

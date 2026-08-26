@@ -14,6 +14,8 @@ export type SkillRow = {
   weapon_effectiveness_url: string | null;
   scategory_url: string | null;
   required: string | null; // wiki_name de la compétence prérequise (chaîne d'amélioration)
+  stat_modifiers: string | null; // "HP,ATK,SPD,DEF,RES" (inclut le raffinage)
+  refine_path: string | null; // atk/spd/def/res/skill1… (null = arme de base)
   unlock_rarity: number | null; // rareté (étoiles) à laquelle le héros débloque la compétence
 };
 
@@ -49,7 +51,7 @@ export function useHeroSkills(heroId: string | null, enabled = true) {
       const { data: sk } = await supabase
         .from('skills')
         .select(
-          'wiki_name,name,scategory,use_range,might,sp,cooldown,description,weapon_effectiveness,weapon_effectiveness_url,scategory_url,required',
+          'wiki_name,name,scategory,use_range,might,sp,cooldown,description,weapon_effectiveness,weapon_effectiveness_url,scategory_url,required,stat_modifiers,refine_path',
         )
         .in('wiki_name', names);
       const rows = (sk ?? []).map((s) => {
