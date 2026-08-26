@@ -122,10 +122,16 @@ function weaponSecondary(s: SkillRow): number {
 function pickBestWeapon(weapons: SkillRow[], ceilings?: Map<string, number>): SkillRow | null {
   if (weapons.length === 0) return null;
   const sup = supersededSet(weapons);
-  const dmgOf = (w: SkillRow) => Math.max(effMight(w), ceilings?.get(w.name) ?? 0);
+  // 1) PLAFOND de raffinage (choisit la bonne ARME : une PRF raffinable à 18 > commune 16).
+  const ceilingOf = (w: SkillRow) => Math.max(effMight(w), ceilings?.get(w.name) ?? 0);
   return weapons.reduce((a, b) => {
-    const ea = dmgOf(a), eb = dmgOf(b);
+    const ca = ceilingOf(a), cb = ceilingOf(b);
+    if (cb !== ca) return cb > ca ? b : a;
+    // 2) À plafond égal (mêmes variantes d'une arme) : la variante au plus gros Dmg PRÉSENT
+    //    (celle réellement raffinée le mieux, ex. le raffinage ATQ à 18 qu'on possède).
+    const ea = effMight(a), eb = effMight(b);
     if (eb !== ea) return eb > ea ? b : a;
+    // 3) puis plus de stats bonus, puis la version supérieure de la chaîne.
     const sa = weaponSecondary(a), sb = weaponSecondary(b);
     if (sb !== sa) return sb > sa ? b : a;
     return sup.has(a.wiki_name) && !sup.has(b.wiki_name) ? b : a;
