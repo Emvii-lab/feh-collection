@@ -45,14 +45,18 @@ export type CombatMods = {
   defendBuff: { atk: number; spd: number; def: number; res: number };
   bonusDamage: number; // dégâts fixes ajoutés à chaque coup (ex. « deals damage = X »)
   bonusDamageStat: { atk: number; spd: number; def: number; res: number; hp: number }; // % d'une stat en +
-  guaranteedFollowup: boolean; // double garanti
+  guaranteedFollowup: boolean; // double garanti (inconditionnel)
+  followupInit: boolean; // double garanti SI le porteur initie ; followupDefend = SI attaqué
+  followupDefend: boolean;
   noFollowup: boolean; // ne peut pas doubler
   cannotBeDoubled: boolean; // l'adversaire ne peut pas doubler cette unité
   counterAnyRange: boolean; // riposte quelle que soit la portée (Distant/Close Counter)
   preventFoeCounter: boolean; // l'adversaire ne peut pas riposter
   neutralizeFoeBonuses: boolean; // annule les bonus en combat de l'adversaire
   pierceFoeReduction: boolean; // annule la réduction de dégâts de l'adversaire
-  dmgReductionPct: number; // % de réduction des dégâts SUBIS (0-100)
+  dmgReductionPct: number; // % de réduction des dégâts SUBIS (0-100, inconditionnel)
+  reductionInit: number; // réduction % SI le porteur initie ; reductionDefend = SI attaqué
+  reductionDefend: number;
   flatDmgReduction: number; // réduction FIXE des dégâts subis (par coup)
   // Malus que CETTE unité inflige à son adversaire (Ploy, Chill, Menace, « inflige X »).
   foeAtk: number; foeSpd: number; foeDef: number; foeRes: number; // valeurs positives
@@ -66,9 +70,9 @@ export const NO_MODS: CombatMods = {
   brave: false, effAgainst: [], atkBuff: 0, spdBuff: 0, defBuff: 0, resBuff: 0,
   initBuff: { atk: 0, spd: 0, def: 0, res: 0 }, defendBuff: { atk: 0, spd: 0, def: 0, res: 0 },
   bonusDamage: 0, bonusDamageStat: { atk: 0, spd: 0, def: 0, res: 0, hp: 0 },
-  guaranteedFollowup: false, noFollowup: false, cannotBeDoubled: false,
+  guaranteedFollowup: false, followupInit: false, followupDefend: false, noFollowup: false, cannotBeDoubled: false,
   counterAnyRange: false, preventFoeCounter: false, neutralizeFoeBonuses: false,
-  pierceFoeReduction: false, dmgReductionPct: 0, flatDmgReduction: 0,
+  pierceFoeReduction: false, dmgReductionPct: 0, reductionInit: 0, reductionDefend: 0, flatDmgReduction: 0,
   foeAtk: 0, foeSpd: 0, foeDef: 0, foeRes: 0,
   fieldBuff: { atk: 0, spd: 0, def: 0, res: 0, range: 0 },
   special: { maxCd: 0, kind: 'none' }, vantage: false,
@@ -241,13 +245,18 @@ function doStrike(S: Fighter, R: Fighter) {
 // (= initiateur) reçoit son initBuff, le défenseur son defendBuff.
 function withRole(u: Unit, role: 'init' | 'defend'): Unit {
   const b = role === 'init' ? u.mods.initBuff : u.mods.defendBuff;
-  if (!b || (!b.atk && !b.spd && !b.def && !b.res)) return u;
+  const followup = role === 'init' ? u.mods.followupInit : u.mods.followupDefend;
+  const reduction = role === 'init' ? u.mods.reductionInit : u.mods.reductionDefend;
+  const hasBuff = b && (b.atk || b.spd || b.def || b.res);
+  if (!hasBuff && !followup && !reduction) return u;
   return {
     ...u,
     mods: {
       ...u.mods,
-      atkBuff: u.mods.atkBuff + b.atk, spdBuff: u.mods.spdBuff + b.spd,
-      defBuff: u.mods.defBuff + b.def, resBuff: u.mods.resBuff + b.res,
+      atkBuff: u.mods.atkBuff + (b?.atk ?? 0), spdBuff: u.mods.spdBuff + (b?.spd ?? 0),
+      defBuff: u.mods.defBuff + (b?.def ?? 0), resBuff: u.mods.resBuff + (b?.res ?? 0),
+      guaranteedFollowup: u.mods.guaranteedFollowup || followup,
+      dmgReductionPct: Math.max(u.mods.dmgReductionPct, reduction),
     },
   };
 }

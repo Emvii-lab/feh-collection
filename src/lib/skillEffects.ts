@@ -23,10 +23,14 @@ export type ParsedEffects = {
   bonusDamageStat: { atk: number; spd: number; def: number; res: number; hp: number }; // % d'une stat
   // Réductions des dégâts subis (porteur en défense).
   dmgReductionPct: number; // en % (max, ne s'empile pas linéairement)
+  reductionInit: number; // réduction % SI le porteur initie ; reductionDefend = SI attaqué
+  reductionDefend: number;
   flatDmgReduction: number; // fixe (somme)
   // Contrôle de l'échange (porteur).
   brave: boolean;
-  guaranteedFollowup: boolean; // le porteur double à coup sûr
+  guaranteedFollowup: boolean; // le porteur double à coup sûr (inconditionnel)
+  followupInit: boolean; // double garanti SI le porteur initie ; followupDefend = SI attaqué (Quick Riposte)
+  followupDefend: boolean;
   cannotBeDoubled: boolean; // l'adversaire ne peut pas doubler le porteur
   noFollowup: boolean; // le porteur ne peut pas doubler
   counterAnyRange: boolean; // riposte quelle que soit la portée
@@ -55,8 +59,8 @@ const EMPTY = (): ParsedEffects => ({
   initBuff: { atk: 0, spd: 0, def: 0, res: 0 },
   defendBuff: { atk: 0, spd: 0, def: 0, res: 0 },
   bonusDamage: 0, bonusDamageStat: { atk: 0, spd: 0, def: 0, res: 0, hp: 0 },
-  dmgReductionPct: 0, flatDmgReduction: 0,
-  brave: false, guaranteedFollowup: false, cannotBeDoubled: false,
+  dmgReductionPct: 0, reductionInit: 0, reductionDefend: 0, flatDmgReduction: 0,
+  brave: false, guaranteedFollowup: false, followupInit: false, followupDefend: false, cannotBeDoubled: false,
   noFollowup: false, counterAnyRange: false,
   preventFoeCounter: false, neutralizeFoeBonuses: false, pierceFoeReduction: false,
   foeAtk: 0, foeSpd: 0, foeDef: 0, foeRes: 0,
@@ -108,7 +112,7 @@ function pFieldBuff(d: string, out: ParsedEffects) {
 // PRUDENT : condition alternative (« … ou … ») → on applique en « always » (comportement
 // historique, aucune régression). La condition = tout ce qui précède le verbe d'effet.
 function clauseGate(clause: string): { apply: boolean; phase: 'init' | 'defend' | 'always' } {
-  const cut = clause.search(/\b(?:grants?|inflicts?|deals?|reduces?|neutralizes?|confere|inflige|reduit|accorde|enables?)\b/);
+  const cut = clause.search(/\b(?:grants?|inflicts?|deals?|reduces?|neutralizes?|makes?|confere|inflige|reduit|accorde|enables?)\b/);
   const cond = cut >= 0 ? clause.slice(0, cut) : clause;
   if (/\bor\b|\bou\b/.test(cond)) return { apply: true, phase: 'always' };
   // Seuils de PV, évalués à PV pleins (début de combat).
@@ -193,12 +197,16 @@ function pSpecialScaledReduction(d: string, cd: number, out: ParsedEffects) {
   while ((m = re.exec(d))) out.flatDmgReduction += cd * +m[1];
 }
 
-// P6. Réduction en POURCENTAGE : « reduces damage ... by N% » (max).
-function pPctReduction(d: string, out: ParsedEffects) {
+// P6. Réduction en POURCENTAGE : « reduces damage ... by N% » (max), routée par phase.
+function pPctReduction(d: string, out: ParsedEffects, phase: 'init' | 'defend' | 'always') {
   const m =
     d.match(/reduces damage[^.;]*?by\s*(\d+)\s*%/) ||
     d.match(/reduit les degats[^.;]*?de\s*(\d+)\s*%/);
-  if (m) out.dmgReductionPct = Math.max(out.dmgReductionPct, +m[1]);
+  if (!m) return;
+  const n = +m[1];
+  if (phase === 'init') out.reductionInit = Math.max(out.reductionInit, n);
+  else if (phase === 'defend') out.reductionDefend = Math.max(out.reductionDefend, n);
+  else out.dmgReductionPct = Math.max(out.dmgReductionPct, n);
 }
 
 // P7. Malus infligés à l'adversaire : « inflicts Atk/Res-4 on foe(s) » (Ploy, Chill,
@@ -216,8 +224,10 @@ function pFoeDebuff(d: string, out: ParsedEffects) {
   }
 }
 
-// P8. Contrôle du doublon + riposte + neutralisations (drapeaux).
-function pFlags(d: string, out: ParsedEffects) {
+// P8. Contrôle du doublon + riposte + neutralisations (drapeaux). Le DOUBLON GARANTI est
+// routé par phase (Quick Riposte = uniquement si attaqué) ; les autres restent inconditionnels
+// une fois la clause validée par la porte (phase/PV).
+function pFlags(d: string, out: ParsedEffects, phase: 'init' | 'defend' | 'always') {
   if (/foe cannot counterattack|ennemi ne peut pas (?:riposter|contre-attaquer)|adversaire ne peut pas (?:riposter|contre-attaquer)/.test(d))
     out.preventFoeCounter = true;
   if (/counterattacks?\s+regardless of[^.;]*range|distant counter|close counter|riposte[^.;]*?quelle que soit[^.;]*?(?:distance|portee)/.test(d))
@@ -228,8 +238,11 @@ function pFlags(d: string, out: ParsedEffects) {
   // pour ne pas relier « neutralizes unit's penalties, … reduces damage » (= SA propre réduc).
   if (/neutralizes[^.;,]*?reduce[sd]? damage|neutralise[^.;,]*?reduction[^.;,]*?degats/.test(d))
     out.pierceFoeReduction = true;
-  if (/guaranteed follow-up|guarantees[^.;]*?unit'?s?[^.;]*?follow-up|double.{0,6}garanti|riposte suivie garantie/.test(d))
-    out.guaranteedFollowup = true;
+  if (/guaranteed follow-up|guarantees[^.;]*?unit'?s?[^.;]*?follow-up|double.{0,6}garanti|riposte suivie garantie/.test(d)) {
+    if (phase === 'init') out.followupInit = true;
+    else if (phase === 'defend') out.followupDefend = true;
+    else out.guaranteedFollowup = true;
+  }
   if (/(?:foe|foes) cannot[^.;]*?follow-up|prevents[^.;]*?foe'?s?[^.;]*?follow-up|adversaire ne peut pas[^.;]*?(?:doubler|riposte suivie)|empeche[^.;]*?riposte suivie[^.;]*?(?:ennemi|adversaire)/.test(d))
     out.cannotBeDoubled = true;
   if (/unit cannot[^.;]*?follow-up|ne peut pas (?:effectuer|faire)[^.;]*?riposte suivie/.test(d))
@@ -283,14 +296,22 @@ export function parseSkillEffects(skills: SkillRow[]): ParsedEffects {
     const d = clean(s.description);
     pFieldBuff(d, out); // bonus de zone aux alliés (capté à part)
     // pour les bonus « self », on retire les clauses « … to allies within N » (anti-doublon).
-    pFlatBuffs(d.replace(new RegExp(FIELD_RE.source, 'g'), ' '), out);
-    pSpecialScaledBuff(d, cd, out);
-    pSpecialScaledDamage(d, cd, out);
-    pStatScaledDamage(d, out);
-    pSpecialScaledReduction(d, cd, out);
-    pPctReduction(d, out);
-    pFoeDebuff(d, out);
-    pFlags(d, out);
+    const base = d.replace(new RegExp(FIELD_RE.source, 'g'), ' ');
+    pFlatBuffs(base, out); // bonus de stat : gère lui-même clauses + porte + phase
+    // Les autres effets, clause par clause, avec la PORTE (phase + seuils de PV) : une clause
+    // dont la condition de PV échoue à pleine vie n'est PAS appliquée ; la réduction et le
+    // doublon garanti sont routés selon la phase (init/defend).
+    for (const clause of base.split(/[.;]/)) {
+      const g = clauseGate(clause);
+      if (!g.apply) continue;
+      pSpecialScaledBuff(clause, cd, out);
+      pSpecialScaledDamage(clause, cd, out);
+      pStatScaledDamage(clause, out);
+      pSpecialScaledReduction(clause, cd, out);
+      pPctReduction(clause, out, g.phase);
+      pFoeDebuff(clause, out);
+      pFlags(clause, out, g.phase);
+    }
     if (isBrave(d)) out.brave = true;
   }
   return out;

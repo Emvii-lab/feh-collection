@@ -115,10 +115,12 @@ function toMods(e: EnemyCombat, effAgainst: string[]): CombatMods {
     atkBuff: e.atkBuff, spdBuff: e.spdBuff, defBuff: e.defBuff, resBuff: e.resBuff,
     initBuff: e.initBuff, defendBuff: e.defendBuff,
     bonusDamage: e.bonusDamage, bonusDamageStat: e.bonusDamageStat,
-    guaranteedFollowup: e.guaranteedFollowup, cannotBeDoubled: e.cannotBeDoubled, noFollowup: e.noFollowup,
+    guaranteedFollowup: e.guaranteedFollowup, followupInit: e.followupInit, followupDefend: e.followupDefend,
+    cannotBeDoubled: e.cannotBeDoubled, noFollowup: e.noFollowup,
     counterAnyRange: e.counterAnyRange, preventFoeCounter: e.preventFoeCounter,
     neutralizeFoeBonuses: e.neutralizeFoeBonuses, pierceFoeReduction: e.pierceFoeReduction,
-    dmgReductionPct: e.dmgReductionPct, flatDmgReduction: e.flatDmgReduction,
+    dmgReductionPct: e.dmgReductionPct, reductionInit: e.reductionInit, reductionDefend: e.reductionDefend,
+    flatDmgReduction: e.flatDmgReduction,
     foeAtk: e.foeAtk, foeSpd: e.foeSpd, foeDef: e.foeDef, foeRes: e.foeRes,
     fieldBuff: e.fieldBuff, special: e.special,
   };
@@ -398,8 +400,10 @@ export function Simulator({
         fieldBuff: ef.fieldBuff, // bonus de zone que TON perso accorde à tes autres persos
 
         guaranteedFollowup: ef.guaranteedFollowup || pu.guaranteedFollowup,
+        followupInit: ef.followupInit, followupDefend: ef.followupDefend,
         cannotBeDoubled: ef.cannotBeDoubled, noFollowup: ef.noFollowup,
         dmgReductionPct: Math.max(ef.dmgReductionPct, pu.dmgReductionPct),
+        reductionInit: ef.reductionInit, reductionDefend: ef.reductionDefend,
         flatDmgReduction: ef.flatDmgReduction, special: ef.special,
       },
     };
