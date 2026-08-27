@@ -55,12 +55,13 @@ const WEAPONS: WeaponType[] = ['Sword', 'Lance', 'Axe', 'Tome', 'Bow', 'Dagger',
 const MOVES = ['Infantry', 'Cavalry', 'Flying', 'Armored'] as const;
 
 // Plan tour par tour (réutilisé par « Résoudre la carte » ET les équipes trouvées).
-function PlanSteps({ turns }: { turns: PlanTurn[] }) {
+// startTurn : numéro du 1er tour affiché (2+ en re-planification, le tour 1 étant joué).
+function PlanSteps({ turns, startTurn = 1 }: { turns: PlanTurn[]; startTurn?: number }) {
   return (
     <ol className="mt-1 space-y-1">
       {turns.map((t, i) => (
         <li key={i} className="rounded bg-black/25 px-2 py-1">
-          <span className="font-feh text-[10.5px] text-gold-text">Tour {i + 1}</span>
+          <span className="font-feh text-[10.5px] text-gold-text">Tour {i + startTurn}</span>
           <ul className="mt-0.5 space-y-0.5 text-warm-dim">
             {t.player.filter((m) => m.from !== m.to || m.targetId).map((m, j) => (
               <li key={j}>
@@ -434,6 +435,8 @@ export function Simulator({
   const [liveOn, setLiveOn] = useState(false);
   const [liveEnemies, setLiveEnemies] = useState<Record<string, LiveOv>>({});
   const [liveAllies, setLiveAllies] = useState<Record<string, LiveOv>>({});
+  const [liveTurn, setLiveTurn] = useState(2); // tour où l'on repart (le tour 1 est déjà joué)
+  const [planStartTurn, setPlanStartTurn] = useState(1); // décalage d'affichage du dernier plan
   // (Ré)initialise l'état live depuis les positions/PV de départ de la carte.
   const initLive = () => {
     if (!wikiMap) return;
@@ -515,6 +518,7 @@ export function Simulator({
     setSolving(true);
     setSolveRes(null);
     setSolveNodes(0);
+    setPlanStartTurn(live ? liveTurn : 1); // en re-planification, on numérote depuis le tour actuel
     try {
       const foes = wikiMap.difficulties[wikiDiff] ?? [];
       const passive = /passive/i.test(wikiMap.globalai);
@@ -1018,7 +1022,9 @@ export function Simulator({
                             {solveRes.win ? (
                               <>
                                 <p className="font-feh font-semibold text-emerald-300">
-                                  ✅ Gagnable en {solveRes.turns.length} tour(s) — plan :
+                                  ✅ {planStartTurn > 1
+                                    ? `Gagnable en ${solveRes.turns.length} tour(s) de plus (à partir du tour ${planStartTurn})`
+                                    : `Gagnable en ${solveRes.turns.length} tour(s)`} — plan :
                                 </p>
                                 <p className="mt-1 rounded-md border border-amber-400/30 bg-amber-500/10 px-2 py-1 text-[10.5px] leading-snug text-amber-200">
                                   ⚠️ Dégâts calculés avec les <strong>stats et compétences saisies</strong>.
@@ -1027,7 +1033,7 @@ export function Simulator({
                                     : ' Niveau 40 monté recommandé.'}{' '}
                                   Si ton perso en jeu est d'un <strong>niveau inférieur</strong> (ex. 20) ou <strong>sans compétences</strong>, les K.O. ne tomberont pas pareil et la carte peut ne pas être résolue.
                                 </p>
-                                <PlanSteps turns={solveRes.turns} />
+                                <PlanSteps turns={solveRes.turns} startTurn={planStartTurn} />
                                 <p className="mt-1 text-[9.5px] text-warm-mute/70">
                                   {solveRes.nodes} états explorés. « IA prévue » = mouvements ennemis <strong>estimés</strong> par le modèle ; en jeu l'IA peut bouger autrement, ce qui décale le plan.
                                 </p>
@@ -1063,6 +1069,11 @@ export function Simulator({
                               Joue le tour du plan, puis <strong>glisse les ennemis ET tes persos directement sur la carte</strong> à leur position réelle (ou saisis les cases ci-dessous), ajuste les PV, coche « K.O. » si tué. Relance : le plan repartira de cet état exact — fini l'écart d'IA.
                               <button type="button" onClick={initLive} className="ml-1 rounded border border-sky-300/40 px-1.5 py-0.5 text-sky-200 hover:bg-sky-500/15">↺ réinitialiser au départ</button>
                             </p>
+                            <label className="flex items-center gap-1.5 text-[10.5px] text-warm-dim">
+                              Tour actuel (déjà joué : {Math.max(0, liveTurn - 1)}) :
+                              <input type="number" min={2} value={liveTurn} onChange={(e) => setLiveTurn(Math.max(2, +e.target.value || 2))} className="w-12 rounded bg-black/30 px-1 py-0.5 text-center text-warm-text" />
+                              <span className="text-warm-mute/70">→ le plan sera numéroté à partir de ce tour.</span>
+                            </label>
                             <div>
                               <p className="font-feh text-[10.5px] text-rose-300/90">Ennemis</p>
                               {(wikiMap.difficulties[wikiDiff] ?? []).map((e, i) => {
