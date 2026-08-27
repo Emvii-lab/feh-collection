@@ -677,7 +677,7 @@ export function Simulator({
       const pool: SearchUnit[] = ranked.map(({ h, s }) => {
         const wi = wmap.get(h.id) ?? NO_WI;
         const hero = { id: h.id, name: h.name, title: h.title, color: h.color, weaponType: h.weaponType, moveType: h.moveType, rarity: 5, origin: '', moveUrl: h.moveUrl, weaponUrl: h.weaponUrl } as Hero;
-        return { id: h.id, name: h.name, title: h.title, unit: { hero, stats: s, mods: toMods(wi.effects, wi.effAgainst) } };
+        return { id: h.id, name: h.name, title: h.title, unit: { hero, stats: s, mods: toMods(wi.effects, wi.effAgainst) }, assist: wi.assistName ? detectAssist([wi.assistName]) : undefined };
       });
 
       const passive = /passive/i.test(wikiMap.globalai);
@@ -771,7 +771,7 @@ export function Simulator({
         hero.moveUrl = h.moveUrl; hero.weaponUrl = h.weaponUrl; // icônes réelles (déplacement + arme)
         const mods = gapFill(hero, bs, toMods(wi.effects, wi.effAgainst));
         theoryUnits.current.set(h.id, { stats: bs, mods }); // pour « charger » un héros non possédé
-        return { id: h.id, name: h.name, title: h.title, unit: { hero, stats: bs, mods } };
+        return { id: h.id, name: h.name, title: h.title, unit: { hero, stats: bs, mods }, assist: wi.assistName ? detectAssist([wi.assistName]) : undefined };
       });
 
       const passive = /passive/i.test(wikiMap.globalai || '');

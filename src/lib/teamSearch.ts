@@ -6,10 +6,10 @@
 // par le solveur lourd. Budget de temps global pour ne pas figer le navigateur.
 import { solve, type PlanTurn } from './solver';
 import { combatVerdict, simulate, type Unit } from './combat';
-import type { Board, BattleUnit } from './battle';
+import type { Board, BattleUnit, AssistType } from './battle';
 import type { TerrainMap } from './tactics';
 
-export type SearchUnit = { id: string; name: string; title: string; unit: Unit };
+export type SearchUnit = { id: string; name: string; title: string; unit: Unit; assist?: AssistType };
 export type TeamResult = {
   ids: string[]; names: string[]; titles: string[];
   moves: string[]; weapons: string[];                  // type de déplacement/arme (repli)
@@ -114,7 +114,7 @@ export function searchTeam(
     if (!canTeamReachAllHp(team)) continue;
     solved++;
     const allies: BattleUnit[] = team.map((u, i) => ({
-      id: u.id, side: 'ally', unit: u.unit, pos: allyPos[i].toLowerCase(), hp: u.unit.stats.hp, active: true,
+      id: u.id, side: 'ally', unit: u.unit, pos: allyPos[i].toLowerCase(), hp: u.unit.stats.hp, active: true, assist: u.assist,
     }));
     const board: Board = { units: [...enemies.map((e) => ({ ...e })), ...allies], terrain, linked };
     // survie obligatoire : on ne veut pas d'une « victoire » où un héros meurt.

@@ -112,9 +112,21 @@ function pFieldBuff(d: string, out: ParsedEffects) {
 // PRUDENT : condition alternative (« … ou … ») → on applique en « always » (comportement
 // historique, aucune régression). La condition = tout ce qui précède le verbe d'effet.
 function clauseGate(clause: string): { apply: boolean; phase: 'init' | 'defend' | 'always' } {
-  const cut = clause.search(/\b(?:grants?|inflicts?|deals?|reduces?|neutralizes?|makes?|confere|inflige|reduit|accorde|enables?)\b/);
-  const cond = cut >= 0 ? clause.slice(0, cut) : clause;
+  // On isole les SEGMENTS DE CONDITION (le texte introduit par « if/when/si »), qu'ils
+  // précèdent ou suivent l'effet (« si X, accorde Y » comme « accorde Y si X »). Ça évite
+  // qu'un « ou » présent dans l'EFFET (« 1re attaque ou riposte ») fausse la détection.
+  const segs: string[] = [];
+  const cre = /\b(?:if|when|si|s'ils?|s'il)\b\s+([^,.;]*)/g;
+  let cm: RegExpExecArray | null;
+  while ((cm = cre.exec(clause))) segs.push(cm[1]);
+  const cond = segs.join(' ; ');
+  if (!cond) return { apply: true, phase: 'always' }; // aucune condition → toujours actif
   if (/\bor\b|\bou\b/.test(cond)) return { apply: true, phase: 'always' };
+  // Adjacence/soutien, hypothèse « formation » (les persos jouent groupés) : les bonus
+  // « près d'un allié » sont supposés ACTIFS (comportement historique = always), mais les
+  // bonus « SOLO » (si PAS adjacent / aucun allié à proximité) sont supposés INACTIFS → drop.
+  if (/not adjacent to (?:an?|any) all|isn'?t adjacent to (?:an?|any) all|no all(?:y|ies) (?:are )?within|not within \d+ spaces? of (?:an? )?all|(?:pas|n'?est pas) adjacent[e]? (?:a|à) (?:un|des) allie|aucun allie/.test(cond))
+    return { apply: false, phase: 'always' };
   // Seuils de PV, évalués à PV pleins (début de combat).
   const hpRe = /hp\s*(>=|≥|<=|≤|=|>|<)\s*(\d+)\s*%?/g;
   let hm: RegExpExecArray | null;
