@@ -551,9 +551,10 @@ export function Simulator({
         const h = byId.get(id);
         const s = h && (statsOverride.get(id) ?? resolveStats(h, stats.get(id)));
         if (!h || !s) return;
+        const ov = live?.allies[id];
+        if (ov?.dead) return; // allié tombé en jeu (pertes autorisées) → hors plateau
         const wi = weaponInfo.get(id) ?? NO_WI;
         const mo = modsOverride.get(id);
-        const ov = live?.allies[id];
         allyUnits.push({
           id, side: 'ally',
           unit: { hero: h, stats: s, mods: mo ?? toMods(wi.effects, wi.effAgainst) },
@@ -1098,11 +1099,12 @@ export function Simulator({
                                 if (!h) return null;
                                 const ov = liveAllies[id] ?? { pos: wikiMap.allyPos[i].toLowerCase(), hp: 0 };
                                 return (
-                                  <div key={id} className="flex items-center gap-1.5 py-0.5">
+                                  <div key={id} className={`flex items-center gap-1.5 py-0.5 ${ov.dead ? 'opacity-40' : ''}`}>
                                     <span className="w-24 truncate text-warm-dim">{h.name}</span>
                                     <input value={ov.pos} onChange={(ev) => setLiveAllies((p) => ({ ...p, [id]: { ...ov, pos: ev.target.value.toLowerCase().replace(/[^a-f1-8]/g, '') } }))} placeholder="c2" className="w-10 rounded bg-black/30 px-1 py-0.5 text-center text-warm-text" />
                                     <input type="number" value={ov.hp} onChange={(ev) => setLiveAllies((p) => ({ ...p, [id]: { ...ov, hp: +ev.target.value || 0 } }))} className="w-14 rounded bg-black/30 px-1 py-0.5 text-center text-warm-text" />
                                     <span className="text-warm-mute">PV</span>
+                                    <label className="ml-auto flex items-center gap-1 text-warm-mute"><input type="checkbox" checked={!!ov.dead} onChange={(ev) => setLiveAllies((p) => ({ ...p, [id]: { ...ov, dead: ev.target.checked } }))} className="h-3 w-3 accent-rose-400" />K.O.</label>
                                   </div>
                                 );
                               })}
@@ -1472,10 +1474,11 @@ function MapGrid({
   };
 
   // Alliés posés : sur leur case de départ, ou leur position live (mode « combat en cours »).
+  // Les alliés marqués K.O. (pertes autorisées) sont retirés de la grille.
   const allyEffPos = (i: number) => (liveOn ? liveAllies[team[i]?.id]?.pos : '') || allyOrder[i];
   const placed = team
-    .map((h, i) => ({ hero: h, idx: i, pos: allyEffPos(i) }))
-    .filter((p) => p.pos);
+    .map((h, i) => ({ hero: h, idx: i, pos: allyEffPos(i), dead: liveOn && !!liveAllies[h.id]?.dead }))
+    .filter((p) => p.pos && !p.dead);
   const allyAt = new Map(placed.map((p) => [p.pos, p]));
 
   const enemyPos = new Set(enemyAt.keys());
