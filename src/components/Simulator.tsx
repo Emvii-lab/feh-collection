@@ -103,6 +103,10 @@ const pickEffects = (c: EnemyCombat) => ({
 });
 const ZERO_EFFECTS = pickEffects(EMPTY_EFFECTS());
 
+// Re-planification « combat en cours » : état réel saisi après avoir joué un tour.
+type LiveOv = { pos: string; hp: number; dead?: boolean };
+type LiveState = { enemies: Record<string, LiveOv>; allies: Record<string, LiveOv> };
+
 // Effets parsés → modificateurs de combat (pour construire le plateau du solveur).
 function toMods(e: EnemyCombat, effAgainst: string[]): CombatMods {
   return {
@@ -422,6 +426,28 @@ export function Simulator({
   const solveLimit = useRef(15_000); // limite de temps utilisée
   useEffect(() => () => { workerRef.current?.terminate(); searchWorkersRef.current.forEach((w) => w.terminate()); }, []); // nettoyage
 
+  // Re-planification « combat en cours » : positions/PV réels saisis après un tour joué.
+  const [liveOn, setLiveOn] = useState(false);
+  const [liveEnemies, setLiveEnemies] = useState<Record<string, LiveOv>>({});
+  const [liveAllies, setLiveAllies] = useState<Record<string, LiveOv>>({});
+  // (Ré)initialise l'état live depuis les positions/PV de départ de la carte.
+  const initLive = () => {
+    if (!wikiMap) return;
+    const foes = wikiMap.difficulties[wikiDiff] ?? [];
+    const en: Record<string, LiveOv> = {};
+    foes.forEach((e, i) => { en['E' + i] = { pos: e.pos.toLowerCase(), hp: e.hp, dead: false }; });
+    const al: Record<string, LiveOv> = {};
+    team.forEach((id, i) => {
+      if (i >= wikiMap.allyPos.length) return;
+      const h = byId.get(id);
+      const s = h && (statsOverride.get(id) ?? resolveStats(h, stats.get(id)));
+      if (!h || !s) return;
+      al[id] = { pos: wikiMap.allyPos[i].toLowerCase(), hp: s.hp };
+    });
+    setLiveEnemies(en);
+    setLiveAllies(al);
+  };
+
   const stopSearchWorkers = () => {
     searchWorkersRef.current.forEach((w) => w.terminate());
     searchWorkersRef.current = [];
@@ -480,7 +506,7 @@ export function Simulator({
     }
   };
 
-  const runSolver = async () => {
+  const runSolver = async (live?: LiveState) => {
     if (!wikiMap) return;
     setSolving(true);
     setSolveRes(null);
@@ -493,17 +519,23 @@ export function Simulator({
       const terrain = { ...(MAP_TERRAIN[wikiMap.title] ?? {}), ...wikiMap.terrain, ...edits };
 
       const mods = await Promise.all(foes.map((e) => fetchEnemyCombat(e.skills)));
-      const enemyUnits: BattleUnit[] = foes.map((e, i) => {
+      const enemyUnits: BattleUnit[] = [];
+      foes.forEach((e, i) => {
+        const ov = live?.enemies['E' + i];
+        if (ov?.dead) return; // ennemi déjà tué en jeu → on l'enlève
         const r = resolveEnemy(e, heroByName);
-        return {
+        enemyUnits.push({
           id: 'E' + i, side: 'enemy',
           unit: {
             hero: { id: 'E' + i, name: e.name, title: '', color: r.color, weaponType: r.weaponType, moveType: r.moveType, rarity: 5, origin: '' } as Hero,
             stats: { hp: e.hp, atk: e.atk, spd: e.spd, def: e.def, res: e.res },
             mods: toMods(mods[i], []),
           },
-          pos: e.pos.toLowerCase(), hp: e.hp, active: !passive, refresher: isRefresher(e.skills),
-        };
+          // en re-planification (live), on part de l'état réel : positions/PV saisis,
+          // et TOUS les ennemis sont réveillés (on est après le tour 1).
+          pos: (ov?.pos || e.pos).toLowerCase(), hp: ov?.hp ?? e.hp,
+          active: live ? true : !passive, refresher: isRefresher(e.skills),
+        });
       });
       const allyUnits: BattleUnit[] = [];
       team.forEach((id, i) => {
@@ -513,10 +545,11 @@ export function Simulator({
         if (!h || !s) return;
         const wi = weaponInfo.get(id) ?? NO_WI;
         const mo = modsOverride.get(id);
+        const ov = live?.allies[id];
         allyUnits.push({
           id, side: 'ally',
           unit: { hero: h, stats: s, mods: mo ?? toMods(wi.effects, wi.effAgainst) },
-          pos: wikiMap.allyPos[i].toLowerCase(), hp: s.hp, active: true,
+          pos: (ov?.pos || wikiMap.allyPos[i]).toLowerCase(), hp: ov?.hp ?? s.hp, active: true,
         });
       });
       if (!allyUnits.length) {
@@ -926,7 +959,7 @@ export function Simulator({
                           <button
                             type="button"
                             disabled={solving}
-                            onClick={runSolver}
+                            onClick={() => runSolver()}
                             className="rounded-lg border border-fuchsia-300/40 bg-fuchsia-500/20 px-3 py-1.5 font-feh text-[12px] font-semibold text-fuchsia-100 transition hover:bg-fuchsia-500/30 disabled:opacity-60"
                           >
                             {solving ? `⏳ ${solveNodes.toLocaleString('fr')} états…` : '🧠 Résoudre la carte'}
@@ -995,6 +1028,63 @@ export function Simulator({
                             Cherche une suite de placements/attaques qui nettoie la carte (départ sur tes cases, IA ennemie simulée). Calcul en tâche de fond (jusqu'à ~30 s selon les tours) : « pas trouvé » = aucune ligne dans la limite, pas forcément impossible. Plus de tours = recherche plus longue.
                           </p>
                         )}
+                      </div>
+
+                      {/* ===== Re-planification (combat en cours) ===== */}
+                      <div className="mt-2 rounded-lg border border-sky-400/30 bg-sky-500/[0.06] p-2.5">
+                        <label className="flex items-center gap-1.5 font-feh text-[12px] text-sky-200">
+                          <input
+                            type="checkbox"
+                            checked={liveOn}
+                            onChange={(e) => { const on = e.target.checked; setLiveOn(on); if (on) initLive(); }}
+                            className="h-3.5 w-3.5 accent-sky-400"
+                          />
+                          🔄 Combat en cours — re-planifier depuis l'état réel
+                        </label>
+                        {liveOn ? (
+                          <div className="mt-2 space-y-2 text-[11px]">
+                            <p className="text-[10px] leading-snug text-warm-mute/80">
+                              Joue le tour du plan, puis <strong>saisis où sont réellement les ennemis</strong> (case + PV, coche « K.O. » si tué) et, au besoin, la position de tes persos. Relance : le plan repartira de cet état exact — fini l'écart d'IA.
+                              <button type="button" onClick={initLive} className="ml-1 rounded border border-sky-300/40 px-1.5 py-0.5 text-sky-200 hover:bg-sky-500/15">↺ réinitialiser au départ</button>
+                            </p>
+                            <div>
+                              <p className="font-feh text-[10.5px] text-rose-300/90">Ennemis</p>
+                              {(wikiMap.difficulties[wikiDiff] ?? []).map((e, i) => {
+                                const k = 'E' + i;
+                                const ov = liveEnemies[k] ?? { pos: e.pos.toLowerCase(), hp: e.hp };
+                                return (
+                                  <div key={k} className={`flex items-center gap-1.5 py-0.5 ${ov.dead ? 'opacity-40' : ''}`}>
+                                    <span className="w-24 truncate text-warm-dim">{e.name.split(':')[0]}</span>
+                                    <input value={ov.pos} onChange={(ev) => setLiveEnemies((p) => ({ ...p, [k]: { ...ov, pos: ev.target.value.toLowerCase().replace(/[^a-f1-8]/g, '') } }))} placeholder="c5" className="w-10 rounded bg-black/30 px-1 py-0.5 text-center text-warm-text" />
+                                    <input type="number" value={ov.hp} onChange={(ev) => setLiveEnemies((p) => ({ ...p, [k]: { ...ov, hp: +ev.target.value || 0 } }))} className="w-14 rounded bg-black/30 px-1 py-0.5 text-center text-warm-text" />
+                                    <span className="text-warm-mute">PV</span>
+                                    <label className="ml-auto flex items-center gap-1 text-warm-mute"><input type="checkbox" checked={!!ov.dead} onChange={(ev) => setLiveEnemies((p) => ({ ...p, [k]: { ...ov, dead: ev.target.checked } }))} className="h-3 w-3 accent-rose-400" />K.O.</label>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            <div>
+                              <p className="font-feh text-[10.5px] text-emerald-300/90">Tes persos</p>
+                              {team.map((id, i) => {
+                                if (i >= wikiMap.allyPos.length) return null;
+                                const h = byId.get(id);
+                                if (!h) return null;
+                                const ov = liveAllies[id] ?? { pos: wikiMap.allyPos[i].toLowerCase(), hp: 0 };
+                                return (
+                                  <div key={id} className="flex items-center gap-1.5 py-0.5">
+                                    <span className="w-24 truncate text-warm-dim">{h.name}</span>
+                                    <input value={ov.pos} onChange={(ev) => setLiveAllies((p) => ({ ...p, [id]: { ...ov, pos: ev.target.value.toLowerCase().replace(/[^a-f1-8]/g, '') } }))} placeholder="c2" className="w-10 rounded bg-black/30 px-1 py-0.5 text-center text-warm-text" />
+                                    <input type="number" value={ov.hp} onChange={(ev) => setLiveAllies((p) => ({ ...p, [id]: { ...ov, hp: +ev.target.value || 0 } }))} className="w-14 rounded bg-black/30 px-1 py-0.5 text-center text-warm-text" />
+                                    <span className="text-warm-mute">PV</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            <button type="button" disabled={solving} onClick={() => runSolver({ enemies: liveEnemies, allies: liveAllies })} className="rounded-lg border border-sky-300/50 bg-sky-500/20 px-3 py-1.5 font-feh text-[12px] text-sky-100 transition hover:bg-sky-500/30 disabled:opacity-50">
+                              🔄 Résoudre depuis cet état
+                            </button>
+                          </div>
+                        ) : null}
                       </div>
 
                       {/* ===== Recherche d'équipe ===== */}
