@@ -4,7 +4,7 @@
 import { simulate, type Unit } from './combat';
 import {
   reachable, threatZone, manhattan, moveAllowance, moveClass, weaponRange,
-  parsePos, terrainDR, type TerrainMap,
+  parsePos, toPos, occupiable, terrainDR, type TerrainMap,
 } from './tactics';
 
 export type Side = 'ally' | 'enemy';
@@ -17,7 +17,20 @@ export type BattleUnit = {
   active: boolean; // ennemis passifs : dormant tant que non déclenché
   charge?: number; // compteur courant de spéciale (persistant). Absent = plein (maxCd).
   refresher?: boolean; // danseuse/chanteuse : rejoue un allié
+  assist?: AssistType; // assist de déplacement équipé (Repositionnement, Échange…)
 };
+
+// Assists de déplacement modélisés (repositionnement d'un allié adjacent).
+export type AssistType = 'reposition' | 'swap' | 'drawback' | 'pivot' | 'smite' | 'shove';
+const ASSIST_RE: [AssistType, RegExp][] = [
+  ['reposition', /reposition|reposit/i], ['drawback', /draw ?back|retrait/i],
+  ['swap', /\bswap\b|permut/i], ['pivot', /\bpivot\b/i],
+  ['smite', /\bsmite\b|catapult/i], ['shove', /\bshove\b|poussee|bourrade/i],
+];
+export function detectAssist(skillNames: string[]): AssistType | undefined {
+  for (const n of skillNames) for (const [t, re] of ASSIST_RE) if (re.test(n)) return t;
+  return undefined;
+}
 
 // Compteur de spéciale courant d'une unité (plein par défaut).
 const curCharge = (bu: BattleUnit): number =>
@@ -268,6 +281,55 @@ export function applyPlayerAttack(board: Board, id: string, tile: string, target
 // Applique un simple déplacement (sans attaque).
 export function applyMove(board: Board, id: string, tile: string): Board {
   const units = board.units.map((u) => (u.id === id ? { ...u, pos: tile } : { ...u }));
+  return { ...board, units };
+}
+
+// ---- Assists de déplacement -------------------------------------------------------
+export type AssistMove = { targetId: string; targetName: string; toUser: string; toTarget: string };
+const onBoard = (x: number, y: number) => x >= 0 && x <= 5 && y >= 1 && y <= 8;
+type XY = { x: number; y: number };
+// Positions finales (porteur, cible) selon l'assist. `via` = case intermédiaire à traverser
+// (Smite). dir = vecteur unitaire porteur→cible (ils sont adjacents).
+function assistGeom(a: AssistType, pu: XY, pt: XY, dx: number, dy: number): { toUser: XY; toTarget: XY; via?: XY } | null {
+  switch (a) {
+    case 'reposition': return { toUser: pu, toTarget: { x: pu.x - dx, y: pu.y - dy } }; // cible de l'autre côté du porteur
+    case 'swap': return { toUser: pt, toTarget: pu };
+    case 'drawback': return { toUser: { x: pu.x - dx, y: pu.y - dy }, toTarget: pu }; // porteur recule, cible prend sa place
+    case 'pivot': return { toUser: { x: pt.x + dx, y: pt.y + dy }, toTarget: pt }; // porteur saute de l'autre côté de la cible
+    case 'smite': return { toUser: pu, toTarget: { x: pt.x + 2 * dx, y: pt.y + 2 * dy }, via: { x: pt.x + dx, y: pt.y + dy } };
+    case 'shove': return { toUser: pu, toTarget: { x: pt.x + dx, y: pt.y + dy } };
+    default: return null;
+  }
+}
+// Options d'assist du porteur `id` : chaque allié adjacent repositionnable (cases valides).
+export function assistOptions(board: Board, id: string): AssistMove[] {
+  const u = board.units.find((x) => x.id === id);
+  if (!u || !alive(u) || !u.assist) return [];
+  const pu = parsePos(u.pos);
+  if (!pu) return [];
+  const out: AssistMove[] = [];
+  for (const t of board.units) {
+    if (t.side !== u.side || t.id === u.id || !alive(t) || manhattan(u.pos, t.pos) !== 1) continue;
+    const pt = parsePos(t.pos)!;
+    const g = assistGeom(u.assist, pu, pt, pt.x - pu.x, pt.y - pu.y);
+    if (!g) continue;
+    if (!onBoard(g.toUser.x, g.toUser.y) || !onBoard(g.toTarget.x, g.toTarget.y)) continue;
+    const toUser = toPos(g.toUser.x, g.toUser.y), toTarget = toPos(g.toTarget.x, g.toTarget.y);
+    if (toUser === toTarget) continue;
+    if (!occupiable(board.terrain[toUser], u.unit.hero.moveType)) continue;
+    if (!occupiable(board.terrain[toTarget], t.unit.hero.moveType)) continue;
+    // cases d'arrivée libres (hors le porteur et la cible eux-mêmes).
+    const busy = (p: string) => board.units.some((o) => alive(o) && o.id !== u.id && o.id !== t.id && o.pos === p);
+    if (busy(toUser) || busy(toTarget)) continue;
+    if (g.via) { const v = toPos(g.via.x, g.via.y); if (!onBoard(g.via.x, g.via.y) || busy(v) || board.terrain[v] === 'wall') continue; }
+    out.push({ targetId: t.id, targetName: t.unit.hero.name, toUser, toTarget });
+  }
+  return out;
+}
+// Applique un assist (repositionne porteur + cible). Nouvel état.
+export function applyAssist(board: Board, id: string, m: AssistMove): Board {
+  const units = board.units.map((u) =>
+    u.id === id ? { ...u, pos: m.toUser } : u.id === m.targetId ? { ...u, pos: m.toTarget } : { ...u });
   return { ...board, units };
 }
 

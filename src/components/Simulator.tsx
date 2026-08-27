@@ -7,7 +7,7 @@ import {
 } from '../lib/combat';
 import { type SolveResult, type PlanTurn } from '../lib/solver';
 import type { SolverResponse } from '../lib/solverWorker';
-import { isRefresher } from '../lib/battle';
+import { isRefresher, detectAssist } from '../lib/battle';
 import type { Board, BattleUnit } from '../lib/battle';
 import type { SearchResult, SearchUnit, TeamResult } from '../lib/teamSearch';
 import { fetchTeamWeapons, fetchEnemyCombat, EMPTY_EFFECTS, type WeaponInfo, type EnemyCombat } from '../lib/simWeapons';
@@ -54,6 +54,11 @@ const COLORS: { v: Color; label: string }[] = [
 const WEAPONS: WeaponType[] = ['Sword', 'Lance', 'Axe', 'Tome', 'Bow', 'Dagger', 'Staff', 'Dragon', 'Beast'];
 const MOVES = ['Infantry', 'Cavalry', 'Flying', 'Armored'] as const;
 
+const ASSIST_LABEL: Record<string, string> = {
+  reposition: 'repositionne', swap: 'échange avec', drawback: 'tire', pivot: 'pivote autour de',
+  smite: 'catapulte', shove: 'pousse',
+};
+
 // Plan tour par tour (réutilisé par « Résoudre la carte » ET les équipes trouvées).
 // startTurn : numéro du 1er tour affiché (2+ en re-planification, le tour 1 étant joué).
 function PlanSteps({ turns, startTurn = 1 }: { turns: PlanTurn[]; startTurn?: number }) {
@@ -65,8 +70,9 @@ function PlanSteps({ turns, startTurn = 1 }: { turns: PlanTurn[]; startTurn?: nu
           <ul className="mt-0.5 space-y-0.5 text-warm-dim">
             {t.player.filter((m) => m.from !== m.to || m.targetId).map((m, j) => (
               <li key={j}>
-                {m.name} {m.from}→{m.to}
-                {m.targetName ? ` ⚔ ${m.targetName} (${m.dmg}${m.kills ? ', K.O.' : ''})` : ''}
+                {m.assist
+                  ? `🔀 ${m.name} ${m.from}→${m.to} · ${ASSIST_LABEL[m.assist] ?? 'assiste'} ${m.targetName}`
+                  : <>{m.name} {m.from}→{m.to}{m.targetName ? ` ⚔ ${m.targetName} (${m.dmg}${m.kills ? ', K.O.' : ''})` : ''}</>}
               </li>
             ))}
           </ul>
@@ -548,7 +554,7 @@ export function Simulator({
           // en re-planification (live), on part de l'état réel : positions/PV saisis,
           // et TOUS les ennemis sont réveillés (on est après le tour 1).
           pos: (ov?.pos || e.pos).toLowerCase(), hp: ov?.hp ?? e.hp,
-          active: live ? true : !passive, refresher: isRefresher(e.skills),
+          active: live ? true : !passive, refresher: isRefresher(e.skills), assist: detectAssist(e.skills),
         });
       });
       const allyUnits: BattleUnit[] = [];
@@ -565,6 +571,7 @@ export function Simulator({
           id, side: 'ally',
           unit: { hero: h, stats: s, mods: mo ?? toMods(wi.effects, wi.effAgainst) },
           pos: (ov?.pos || wikiMap.allyPos[i]).toLowerCase(), hp: ov?.hp ?? s.hp, active: true,
+          assist: wi.assistName ? detectAssist([wi.assistName]) : undefined,
         });
       });
       if (!allyUnits.length) {
@@ -686,7 +693,7 @@ export function Simulator({
             hero: { id: 'E' + i, name: e.name, title: '', color: r.color, weaponType: r.weaponType, moveType: r.moveType, rarity: 5, origin: '' } as Hero,
             stats: { hp: e.hp, atk: e.atk, spd: e.spd, def: e.def, res: e.res }, mods: toMods(emods[i], []),
           },
-          pos: e.pos.toLowerCase(), hp: e.hp, active: !passive, refresher: isRefresher(e.skills),
+          pos: e.pos.toLowerCase(), hp: e.hp, active: !passive, refresher: isRefresher(e.skills), assist: detectAssist(e.skills),
         };
       });
       if (pool.length < Math.min(4, wikiMap.allyPos.length || 4)) {
@@ -780,7 +787,7 @@ export function Simulator({
             hero: { id: 'E' + i, name: e.name, title: '', color: r.color, weaponType: r.weaponType, moveType: r.moveType, rarity: 5, origin: '' } as Hero,
             stats: { hp: e.hp, atk: e.atk, spd: e.spd, def: e.def, res: e.res }, mods: toMods(emods[i], []),
           },
-          pos: e.pos.toLowerCase(), hp: e.hp, active: !passive, refresher: isRefresher(e.skills),
+          pos: e.pos.toLowerCase(), hp: e.hp, active: !passive, refresher: isRefresher(e.skills), assist: detectAssist(e.skills),
         };
       });
       launchShardedSearch(pool, enemyUnits, terrain, wikiMap.allyPos, linked, {

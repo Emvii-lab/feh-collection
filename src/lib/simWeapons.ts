@@ -10,6 +10,7 @@ export type WeaponInfo = {
   effAgainst: string[];
   effects: ParsedEffects; // brave, bonus, dégâts %stat, riposte à distance, etc.
   hasBuild: boolean; // true = effets lus de ton build équipé (kit exact) ; false = arme seule
+  assistName?: string; // wiki_name de l'assist équipé/natif (pour détecter Repositionnement…)
 };
 export const EMPTY_EFFECTS = (): ParsedEffects => parseSkillEffects([]);
 
@@ -152,6 +153,7 @@ export async function fetchTeamWeapons(
       effAgainst: normEff(weaponRow?.weapon_effectiveness ?? null),
       effects: parseSkillEffects(rows as SkillRow[]),
       hasBuild: true,
+      assistName: (b.assist as string | null) ?? undefined,
     });
   }
 
@@ -163,11 +165,13 @@ export async function fetchTeamWeapons(
     const rows = names.map((n) => skillMap.get(n)).filter((w): w is WRow => Boolean(w));
     const kit = topKit(rows);
     const weaponRow = kit.find((r) => (r.scategory ?? '').toLowerCase() === 'weapon') ?? null;
+    const assistRow = kit.find((r) => (r.scategory ?? '').toLowerCase() === 'assist') ?? null;
     if (kit.length) {
       out.set(hid, {
         effAgainst: normEff(weaponRow?.weapon_effectiveness ?? null),
         effects: parseSkillEffects(kit as SkillRow[]),
         hasBuild: false,
+        assistName: assistRow?.wiki_name,
       });
     }
   }

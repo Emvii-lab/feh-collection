@@ -6,6 +6,7 @@
 import {
   enemyPhase, boardSummary, alive,
   attackOptionsFor, applyPlayerAttack, applyMove, unitReach, hashBoard,
+  assistOptions, applyAssist,
   type Board, type EnemyMove,
 } from './battle';
 import { manhattan } from './tactics';
@@ -13,6 +14,7 @@ import { manhattan } from './tactics';
 export type PlayerMove = {
   id: string; name: string; from: string; to: string;
   targetId?: string; targetName?: string; dmg?: number; kills?: boolean;
+  assist?: string; // assist de déplacement (Repositionnement…) : cible = targetName
 };
 export type PlanTurn = { player: PlayerMove[]; enemy: EnemyMove[] };
 export type SolveResult = { win: boolean; turns: PlanTurn[]; nodes: number; reason: string };
@@ -53,6 +55,18 @@ function* playerPhases(
         id, name: cur.unit.hero.name, from: cur.pos, to: a.tile,
         targetId: a.targetId, targetName: tgt.unit.hero.name, dmg: a.dmg, kills: a.kills,
       }]);
+    }
+    // Assists de déplacement : le porteur peut, au lieu d'attaquer, repositionner un allié
+    // adjacent (Repositionnement, Échange, Pivot…). Utile pour amener un allié à portée /
+    // le mettre à l'abri. On plafonne à quelques options pour borner la recherche.
+    if (cur.assist) {
+      for (const opt of assistOptions(b, id).slice(0, 6)) {
+        const nb = applyAssist(b, id, opt);
+        yield* rec(i + 1, nb, [...moves, {
+          id, name: cur.unit.hero.name, from: cur.pos, to: opt.toUser,
+          targetId: opt.targetId, targetName: opt.targetName, assist: cur.assist,
+        }]);
+      }
     }
     // S'il ne peut pas attaquer utilement : avancer vers l'ennemi le plus proche.
     if (atks.length === 0) {

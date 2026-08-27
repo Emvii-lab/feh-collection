@@ -50,6 +50,12 @@ export const manhattan = (a: string, b: string): number => {
   return pa && pb ? Math.abs(pa.x - pb.x) + Math.abs(pa.y - pb.y) : 99;
 };
 
+// Une unité de ce type de déplacement peut-elle OCCUPER cette case (terrain non
+// infranchissable pour elle) ? Sert aux assists de déplacement (Repositionnement…).
+export function occupiable(terrain: Terrain | undefined, moveType: string): boolean {
+  return enterCost(terrain ?? 'plain', moveClass(moveType)) < Infinity;
+}
+
 // Cases atteignables (Dijkstra pondéré par le terrain). `blocked` = unités
 // infranchissables (ennemis pour toi, alliés pour l'ennemi).
 export function reachable(
