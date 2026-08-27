@@ -459,7 +459,14 @@ export function HeroKit({
                         {s.name}
                       </span>
                       {isBest ? (
-                        <span className="shrink-0 rounded-full bg-gold/20 px-2 py-0.5 font-feh text-[10px] font-bold text-gold-light">
+                        <span
+                          title={
+                            dmgVal != null && (refineData.ceilings.get(s.name) ?? 0) > dmgVal
+                              ? `Meilleure via son plafond de raffinage : Dmg ${refineData.ceilings.get(s.name)} une fois raffinée (raffinage ATQ)`
+                              : 'Meilleure arme (Dmg le plus élevé, plafond de raffinage compris)'
+                          }
+                          className="shrink-0 cursor-help rounded-full bg-gold/20 px-2 py-0.5 font-feh text-[10px] font-bold text-gold-light"
+                        >
                           ★ Meilleure arme
                         </span>
                       ) : null}
