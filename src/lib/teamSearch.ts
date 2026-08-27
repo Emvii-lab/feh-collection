@@ -138,7 +138,7 @@ export function searchTeam(
     teams: winners, tested, poolSize: pool.length,
     reason: winners.length ? ''
       : timedOut
-        ? `Budget de temps atteint : ${tested}/${teams.length} équipes parcourues (${solved} analysées à fond), aucune ne nettoie la carte sans perte. Essaie plus de tours, ou monte tes persos.`
-        : `Aucune des ${teams.length} équipes possibles ne nettoie la carte sans perte (${solved} crédibles analysées à fond). Essaie plus de tours, ou monte tes persos.`,
+        ? `Budget de temps atteint : ${tested}/${teams.length} équipes parcourues (${solved} analysées à fond), aucune ne nettoie la carte. Essaie plus de tours, ou monte tes persos.`
+        : `Aucune des ${teams.length} équipes possibles ne nettoie la carte (${solved} crédibles analysées à fond). Essaie plus de tours, ou monte tes persos.`,
   };
 }

@@ -17,6 +17,8 @@ export type WikiMap = {
   globalai: string; // ex. "passivelinked" : passif = dormant, linked = réveil de groupe
   baseMap: string; // ex. "T0226" : identifiant de l'image de fond
   mapImageUrl?: string; // URL de l'image de la carte (résolue via le wiki)
+  winReq: string; // Victory Requirements du wiki (vide = Rout : pertes autorisées)
+  mustSurvive: boolean; // true = perdre un perso = défaite (carte de survie/défense)
 };
 
 export type ResolvedEnemy = WikiEnemy & {
@@ -102,9 +104,15 @@ export async function fetchWikiMap(pageTitle: string): Promise<WikiMap> {
   const globalai = aiM ? aiM[1].trim() : '';
   const bmM = wt.match(/baseMap\s*=\s*(\w+)/i);
   const baseMap = bmM ? bmM[1] : '';
+  // Victory Requirements : vide/Rout = « bats tous les ennemis », perdre une unité
+  // n'annule PAS la victoire (le combat continue). Seules les cartes de survie/défense/
+  // escorte exigent que tes persos restent en vie.
+  const wrM = wt.match(/\|winReq\s*=\s*([^\n|]*)/i);
+  const winReq = wrM ? wrM[1].trim() : '';
+  const mustSurvive = /surviv|defen[ds]|protect|escap|escort|keep .* alive|all .* survive/i.test(winReq);
   const mapImageUrl = await imageUrlForBaseMap(baseMap);
 
-  return { title: pageTitle, difficulties, allyPos, terrain, globalai, baseMap, mapImageUrl };
+  return { title: pageTitle, difficulties, allyPos, terrain, globalai, baseMap, mapImageUrl, winReq, mustSurvive };
 }
 
 // URL de l'image de fond (File:Map_T####.webp) via l'API du wiki.

@@ -219,6 +219,7 @@ export function Simulator({
       setWikiMap(map);
       const diffs = Object.keys(map.difficulties);
       setWikiDiff(diffs[diffs.length - 1] ?? ''); // par défaut la difficulté la plus élevée
+      setSolveDeaths(!map.mustSurvive); // Rout → pertes autorisées ; survie/défense → non
     } catch (e) {
       setWikiMap(null);
       setWikiError(e instanceof Error ? e.message : 'Échec du chargement');
@@ -419,6 +420,9 @@ export function Simulator({
   const [solving, setSolving] = useState(false);
   const [solveRes, setSolveRes] = useState<SolveResult | null>(null);
   const [solveTurns, setSolveTurns] = useState(3);
+  // Autoriser les pertes : par défaut selon la carte (Rout = pertes OK ; survie/défense =
+  // il faut tout garder en vie). Voir wikiMap.mustSurvive.
+  const [solveDeaths, setSolveDeaths] = useState(true);
   const [solveNodes, setSolveNodes] = useState(0);
   const workerRef = useRef<Worker | null>(null);
   const searchWorkersRef = useRef<Worker[]>([]); // recherche d'équipe parallélisée (N workers)
@@ -479,7 +483,7 @@ export function Simulator({
         .slice(0, maxWinners);
       setSearchRes({
         teams: uniq, tested: tested.reduce((a, b) => a + b, 0), poolSize: pool.length,
-        reason: uniq.length ? '' : 'Aucune équipe testée ne nettoie la carte sans perte (essaie plus de tours, ou monte tes persos).',
+        reason: uniq.length ? '' : 'Aucune équipe testée ne nettoie la carte (essaie plus de tours, ou monte tes persos).',
       });
       setSearching(false);
     };
@@ -580,7 +584,7 @@ export function Simulator({
         kind: 'solve',
         board,
         // Plus de tours = recherche plus profonde → on laisse plus de temps/budget.
-        opts: { maxTurns: solveTurns, nodeBudget: 8_000_000, timeLimitMs, allowDeaths: false },
+        opts: { maxTurns: solveTurns, nodeBudget: 8_000_000, timeLimitMs, allowDeaths: solveDeaths },
       });
     } catch {
       setSolveRes({ win: false, turns: [], nodes: 0, reason: 'Erreur pendant la préparation du calcul.' });
@@ -680,7 +684,7 @@ export function Simulator({
         return;
       }
       launchShardedSearch(pool, enemyUnits, terrain, wikiMap.allyPos, linked, {
-        maxTurns: Math.max(solveTurns, 6), perTeamBudget: 400_000, perTeamMs: 1500, globalMs: 150_000, allowDeaths: false, maxWinners: 1,
+        maxTurns: Math.max(solveTurns, 6), perTeamBudget: 400_000, perTeamMs: 1500, globalMs: 150_000, allowDeaths: solveDeaths, maxWinners: 1,
       });
     } catch {
       setSearchRes({ teams: [], tested: 0, poolSize: 0, reason: 'Erreur pendant la préparation de la recherche.' });
@@ -769,7 +773,7 @@ export function Simulator({
         };
       });
       launchShardedSearch(pool, enemyUnits, terrain, wikiMap.allyPos, linked, {
-        maxTurns: Math.max(solveTurns, 6), perTeamBudget: 400_000, perTeamMs: 1500, globalMs: 150_000, allowDeaths: false, maxWinners: 1,
+        maxTurns: Math.max(solveTurns, 6), perTeamBudget: 400_000, perTeamMs: 1500, globalMs: 150_000, allowDeaths: solveDeaths, maxWinners: 1,
       });
     } catch {
       setSearchRes({ teams: [], tested: 0, poolSize: 0, reason: 'Erreur pendant la préparation du théorycraft.' });
@@ -988,10 +992,10 @@ export function Simulator({
                               {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => <option key={n} value={n}>{n}</option>)}
                             </select>
                           </label>
-                          <label className="flex items-center gap-1 text-[10.5px] text-warm-mute/50" title="Sur cette carte, perdre un héros = défaite. Les 4 doivent survivre.">
-                            <input type="checkbox" checked={false} disabled className="h-3 w-3 accent-fuchsia-400" />
-                            <span className="line-through">autoriser les pertes</span>
-                            <span className="text-warm-mute/70">— survie obligatoire</span>
+                          <label className="flex items-center gap-1 text-[10.5px] text-warm-mute" title={wikiMap?.mustSurvive ? 'Carte de survie/défense : perdre un perso = défaite (défaut décoché).' : 'Carte « Rout » : tu perds seulement si TOUS tes persos meurent, donc perdre une unité est permis (défaut coché).'}>
+                            <input type="checkbox" checked={solveDeaths} onChange={(e) => setSolveDeaths(e.target.checked)} className="h-3 w-3 accent-fuchsia-400" />
+                            autoriser les pertes
+                            {wikiMap ? <span className="text-warm-mute/60">{wikiMap.mustSurvive ? '(survie exigée)' : '(Rout)'}</span> : null}
                           </label>
                         </div>
                         {solving ? (
