@@ -14,6 +14,10 @@ type StatKey = 'atk' | 'spd' | 'def' | 'res';
 export type ParsedEffects = {
   // Bonus « en combat » du porteur (on SOMME, ils s'empilent en combat).
   atkBuff: number; spdBuff: number; defBuff: number; resBuff: number;
+  // Bonus conditionnés par la PHASE : n'appliquer que si le porteur INITIE le combat
+  // (initBuff, ex. Fer mortel/Death Blow) ou seulement s'il DÉFEND (defendBuff, ex. Posture).
+  initBuff: { atk: number; spd: number; def: number; res: number };
+  defendBuff: { atk: number; spd: number; def: number; res: number };
   // Dégâts ajoutés à chaque coup.
   bonusDamage: number; // fixes (ex. « = compteur × N »)
   bonusDamageStat: { atk: number; spd: number; def: number; res: number; hp: number }; // % d'une stat
@@ -48,6 +52,8 @@ export type SpecialInfo = {
 
 const EMPTY = (): ParsedEffects => ({
   atkBuff: 0, spdBuff: 0, defBuff: 0, resBuff: 0,
+  initBuff: { atk: 0, spd: 0, def: 0, res: 0 },
+  defendBuff: { atk: 0, spd: 0, def: 0, res: 0 },
   bonusDamage: 0, bonusDamageStat: { atk: 0, spd: 0, def: 0, res: 0, hp: 0 },
   dmgReductionPct: 0, flatDmgReduction: 0,
   brave: false, guaranteedFollowup: false, cannotBeDoubled: false,
@@ -94,17 +100,40 @@ function pFieldBuff(d: string, out: ParsedEffects) {
   }
 }
 
-// P1. Bonus fixes « Atk/Res+6 » (porteur). Max par stat dans UNE description, sommé dehors.
+// Phase d'une clause conditionnelle, pour ne créditer un bonus qu'à la bonne phase.
+// PRUDENT : on ne conditionne QUE si la condition est PUREMENT une phase (pas de « ou »,
+// de seuil de PV, d'adjacence…) ; sinon on garde le bonus « toujours actif » (comportement
+// historique → aucune régression sur les cas complexes).
+function clausePhase(clause: string): 'init' | 'defend' | 'always' {
+  const cond = clause.split(',')[0]; // partie « if … » avant l'effet
+  if (/\bor\b|\bou\b|\bhp\b|\bpv\b|%|within|adjacent|allies?|\d\s*spaces|cases?/.test(cond)) return 'always';
+  const init = /(?:unit|l'?unite)\s+initiates?\s+combat|l'?unite\s+initie|s'?il\s+initie/.test(cond);
+  const foeInit = /foe\s+initiates?\s+combat|ennemi\s+initie/.test(cond);
+  const attacked = /unit\s+is\s+attacked|l'?unite\s+est\s+attaquee/.test(cond);
+  if (init && !foeInit) return 'init';
+  if (foeInit || attacked) return 'defend';
+  return 'always';
+}
+
+// P1. Bonus fixes « Atk/Res+6 » (porteur), routés par CLAUSE selon la phase (init/defend/
+// toujours). Comme avant : MAX par stat dans UNE description (anti-double-compte), SOMMÉ
+// entre compétences (via `out += …`). Chaque phase a son propre max intra-description.
 function pFlatBuffs(d: string, out: ParsedEffects) {
-  const local = { atk: 0, spd: 0, def: 0, res: 0 };
+  const mk = () => ({ atk: 0, spd: 0, def: 0, res: 0 });
+  const always = mk(), init = mk(), defend = mk();
   const re = new RegExp(`(${STAT_RE}(?:/${STAT_RE})*)\\s*\\+\\s*(\\d+)`, 'g');
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(d))) {
-    const n = +m[2];
-    for (const s of m[1].split('/')) { const k = STAT_KEY[s]; if (k && n > local[k]) local[k] = n; }
+  for (const clause of d.split(/[.;]/)) {
+    const bucket = clausePhase(clause) === 'init' ? init : clausePhase(clause) === 'defend' ? defend : always;
+    re.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(clause))) {
+      const n = +m[2];
+      for (const s of m[1].split('/')) { const k = STAT_KEY[s]; if (k && n > bucket[k]) bucket[k] = n; }
+    }
   }
-  out.atkBuff += local.atk; out.spdBuff += local.spd;
-  out.defBuff += local.def; out.resBuff += local.res;
+  out.atkBuff += always.atk; out.spdBuff += always.spd; out.defBuff += always.def; out.resBuff += always.res;
+  out.initBuff.atk += init.atk; out.initBuff.spd += init.spd; out.initBuff.def += init.def; out.initBuff.res += init.res;
+  out.defendBuff.atk += defend.atk; out.defendBuff.spd += defend.spd; out.defendBuff.def += defend.def; out.defendBuff.res += defend.res;
 }
 
 // P2. Bonus lié au compteur de spéciale : « Atk/Res = ... compteur ... + N ».

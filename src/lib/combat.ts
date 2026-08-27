@@ -39,6 +39,10 @@ export type CombatMods = {
   spdBuff: number; // +VIT en combat (pour le doublon)
   defBuff: number; // +DÉF en combat (encaisse mieux les attaques physiques)
   resBuff: number; // +RÉS en combat (encaisse mieux la magie)
+  // Bonus conditionnés par la phase : appliqués seulement si le porteur INITIE (initBuff)
+  // ou seulement s'il DÉFEND (defendBuff). Fusionnés dans les buffs au début de simulate().
+  initBuff: { atk: number; spd: number; def: number; res: number };
+  defendBuff: { atk: number; spd: number; def: number; res: number };
   bonusDamage: number; // dégâts fixes ajoutés à chaque coup (ex. « deals damage = X »)
   bonusDamageStat: { atk: number; spd: number; def: number; res: number; hp: number }; // % d'une stat en +
   guaranteedFollowup: boolean; // double garanti
@@ -60,6 +64,7 @@ export type CombatMods = {
 
 export const NO_MODS: CombatMods = {
   brave: false, effAgainst: [], atkBuff: 0, spdBuff: 0, defBuff: 0, resBuff: 0,
+  initBuff: { atk: 0, spd: 0, def: 0, res: 0 }, defendBuff: { atk: 0, spd: 0, def: 0, res: 0 },
   bonusDamage: 0, bonusDamageStat: { atk: 0, spd: 0, def: 0, res: 0, hp: 0 },
   guaranteedFollowup: false, noFollowup: false, cannotBeDoubled: false,
   counterAnyRange: false, preventFoeCounter: false, neutralizeFoeBonuses: false,
@@ -232,9 +237,26 @@ function doStrike(S: Fighter, R: Fighter) {
   }
 }
 
+// Fusionne les bonus conditionnés par la phase dans les buffs de combat : l'attaquant
+// (= initiateur) reçoit son initBuff, le défenseur son defendBuff.
+function withRole(u: Unit, role: 'init' | 'defend'): Unit {
+  const b = role === 'init' ? u.mods.initBuff : u.mods.defendBuff;
+  if (!b || (!b.atk && !b.spd && !b.def && !b.res)) return u;
+  return {
+    ...u,
+    mods: {
+      ...u.mods,
+      atkBuff: u.mods.atkBuff + b.atk, spdBuff: u.mods.spdBuff + b.spd,
+      defBuff: u.mods.defBuff + b.def, resBuff: u.mods.resBuff + b.res,
+    },
+  };
+}
+
 // Échange complet, coup par coup (jauge de spéciale + Vantage + doublons).
 // `start` = jauges de spéciale courantes (persistance d'un combat à l'autre).
-export function simulate(attacker: Unit, defender: Unit, start?: StartCharges): Sim {
+export function simulate(rawAttacker: Unit, rawDefender: Unit, start?: StartCharges): Sim {
+  const attacker = withRole(rawAttacker, 'init');   // l'attaquant initie → bonus « si initie »
+  const defender = withRole(rawDefender, 'defend'); // le défenseur → bonus « si attaqué »
   const A = mkFighter(attacker, start?.atk);
   const D = mkFighter(defender, start?.def);
   const canCtr = canCounter(attacker, defender);

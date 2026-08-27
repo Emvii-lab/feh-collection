@@ -113,6 +113,7 @@ function toMods(e: EnemyCombat, effAgainst: string[]): CombatMods {
   return {
     ...NO_MODS, brave: e.brave, effAgainst,
     atkBuff: e.atkBuff, spdBuff: e.spdBuff, defBuff: e.defBuff, resBuff: e.resBuff,
+    initBuff: e.initBuff, defendBuff: e.defendBuff,
     bonusDamage: e.bonusDamage, bonusDamageStat: e.bonusDamageStat,
     guaranteedFollowup: e.guaranteedFollowup, cannotBeDoubled: e.cannotBeDoubled, noFollowup: e.noFollowup,
     counterAnyRange: e.counterAnyRange, preventFoeCounter: e.preventFoeCounter,
@@ -388,6 +389,7 @@ export function Simulator({
         ...NO_MODS, brave: ef.brave, effAgainst: wi.effAgainst,
         atkBuff: ef.atkBuff + pu.atkBuff,
         spdBuff: ef.spdBuff, defBuff: ef.defBuff, resBuff: ef.resBuff,
+        initBuff: ef.initBuff, defendBuff: ef.defendBuff,
         bonusDamage: ef.bonusDamage, bonusDamageStat: ef.bonusDamageStat,
         counterAnyRange: ef.counterAnyRange, preventFoeCounter: ef.preventFoeCounter,
         neutralizeFoeBonuses: ef.neutralizeFoeBonuses, pierceFoeReduction: ef.pierceFoeReduction,
