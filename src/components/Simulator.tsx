@@ -971,6 +971,13 @@ export function Simulator({
                                 <p className="font-feh font-semibold text-emerald-300">
                                   ✅ Gagnable en {solveRes.turns.length} tour(s) — plan :
                                 </p>
+                                <p className="mt-1 rounded-md border border-amber-400/30 bg-amber-500/10 px-2 py-1 text-[10.5px] leading-snug text-amber-200">
+                                  ⚠️ Dégâts calculés avec les <strong>stats et compétences saisies</strong>.
+                                  {team.some((id) => statsOverride.has(id))
+                                    ? ' Cette équipe utilise des persos supposés niveau 40 bien montés (chargés du théorycraft).'
+                                    : ' Niveau 40 monté recommandé.'}{' '}
+                                  Si ton perso en jeu est d'un <strong>niveau inférieur</strong> (ex. 20) ou <strong>sans compétences</strong>, les K.O. ne tomberont pas pareil et la carte peut ne pas être résolue.
+                                </p>
                                 <PlanSteps turns={solveRes.turns} />
                                 <p className="mt-1 text-[9.5px] text-warm-mute/70">
                                   {solveRes.nodes} états explorés. « IA prévue » = mouvements ennemis <strong>estimés</strong> par le modèle ; en jeu l'IA peut bouger autrement, ce qui décale le plan.
@@ -1096,10 +1103,15 @@ export function Simulator({
                                   </li>
                                 ))}
                               </ul>
+                              {searchScope === 'game' ? (
+                                <p className="mt-1 rounded-md border border-amber-400/30 bg-amber-500/10 px-2 py-1 text-[10.5px] leading-snug text-amber-200">
+                                  ⚠️ Ces héros sont supposés <strong>niveau 40, bien montés</strong> (compétences comprises). Si les tiens sont d'un <strong>niveau ou build inférieur</strong>, le plan ne tiendra pas et la carte peut ne pas être résolue. C'est un indicateur « qui viser / monter », pas un plan pour un roster non monté.
+                                </p>
+                              ) : null}
                               <p className="mt-1 text-[9.5px] text-warm-mute/70">
                                 {searchRes.tested} équipe(s) testée(s) sur {searchRes.poolSize} candidats.
                                 {searchScope === 'game'
-                                  ? ' Héros évalués avec leur VRAI kit natif (arme + spéciale + passives A/B/C lus du learnset), montés (+10 fusions/dragonflowers/IV) et les essentiels qu\'on inherit (riposte à distance, réduction), sur ≥6 tours — indication de qui viser, à obtenir/monter.'
+                                  ? ' Héros évalués avec leur VRAI kit natif (arme + spéciale + passives A/B/C lus du learnset), montés (+10 fusions/dragonflowers/IV) et les essentiels qu\'on inherit (riposte à distance, réduction), sur ≥6 tours.'
                                   : <> <span className="text-emerald-300/70">build</span> = kit exact · <span className="text-warm-mute">kit natif</span> = kit du learnset (sans ton build).</>}
                                 {' '}Plans valables si l'IA joue standard.
                               </p>
