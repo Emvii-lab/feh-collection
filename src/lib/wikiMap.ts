@@ -36,7 +36,9 @@ export function parsePageTitle(input: string): string {
 }
 
 const DIFF_RE = /\|(\w+)\s*=\s*\[((?:[^[\]]|\[[^\]]*\])*)\]/g;
-const UNIT_BLOCK = /\{([^{}]*)\}/g; // chaque unité { … }
+// Chaque unité { … } ; autorise UN niveau d'accolade imbriquée (cartes récentes :
+// `ai={turn=1}`), sinon le découpage capturait le {turn=1} interne au lieu de l'unité.
+const UNIT_BLOCK = /\{((?:[^{}]|\{[^{}]*\})*)\}/g;
 const KNOWN_DIFF = /^(normal|hard|lunatic|infernal|abyssal)$/i;
 
 const field = (block: string, key: string): string => {
