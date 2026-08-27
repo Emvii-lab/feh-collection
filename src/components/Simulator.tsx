@@ -932,9 +932,15 @@ export function Simulator({
                         mapImageUrl={wikiMap.mapImageUrl}
                         liveOn={liveOn}
                         liveEnemies={liveEnemies}
+                        liveAllies={liveAllies}
                         onMoveEnemy={(i, pos) => {
                           const e = (wikiMap.difficulties[wikiDiff] ?? [])[i];
                           setLiveEnemies((p) => ({ ...p, ['E' + i]: { ...(p['E' + i] ?? { pos: e?.pos.toLowerCase() ?? '', hp: e?.hp ?? 0 }), pos } }));
+                        }}
+                        onMoveAlly={(id, pos) => {
+                          const idx = team.indexOf(id);
+                          const start = wikiMap.allyPos[idx]?.toLowerCase() ?? '';
+                          setLiveAllies((p) => ({ ...p, [id]: { ...(p[id] ?? { pos: start, hp: 0 }), pos } }));
                         }}
                       />
                       <div className="mt-2 flex flex-wrap gap-1.5">
@@ -1054,7 +1060,7 @@ export function Simulator({
                         {liveOn ? (
                           <div className="mt-2 space-y-2 text-[11px]">
                             <p className="text-[10px] leading-snug text-warm-mute/80">
-                              Joue le tour du plan, puis indique où sont réellement les ennemis : <strong>glisse-les directement sur la carte</strong> (ou saisis la case ci-dessous), ajuste leurs PV, coche « K.O. » si tué. Relance : le plan repartira de cet état exact — fini l'écart d'IA.
+                              Joue le tour du plan, puis <strong>glisse les ennemis ET tes persos directement sur la carte</strong> à leur position réelle (ou saisis les cases ci-dessous), ajuste les PV, coche « K.O. » si tué. Relance : le plan repartira de cet état exact — fini l'écart d'IA.
                               <button type="button" onClick={initLive} className="ml-1 rounded border border-sky-300/40 px-1.5 py-0.5 text-sky-200 hover:bg-sky-500/15">↺ réinitialiser au départ</button>
                             </p>
                             <div>
@@ -1389,7 +1395,7 @@ const BRUSHES: { t: Terrain; label: string }[] = [
 
 function MapGrid({
   enemies, allyPos, team, selectedPos, heroByName, onPick, wikiTerrain, mapKey, mapImageUrl,
-  liveOn = false, liveEnemies = {}, onMoveEnemy,
+  liveOn = false, liveEnemies = {}, liveAllies = {}, onMoveEnemy, onMoveAlly,
 }: {
   enemies: WikiEnemy[];
   allyPos: string[];
@@ -1402,9 +1408,13 @@ function MapGrid({
   mapImageUrl?: string;
   liveOn?: boolean;
   liveEnemies?: Record<string, LiveOv>;
+  liveAllies?: Record<string, LiveOv>;
   onMoveEnemy?: (idx: number, pos: string) => void;
+  onMoveAlly?: (id: string, pos: string) => void;
 }) {
-  const dragIdx = useRef<number | null>(null); // index de l'ennemi en cours de glisser (mode live)
+  // Pion en cours de glisser (mode live) : ennemi (index) ou allié (id du héros).
+  const drag = useRef<{ kind: 'e'; idx: number } | { kind: 'a'; id: string } | null>(null);
+  const liveDrag = liveOn && (!!onMoveEnemy || !!onMoveAlly);
   const [showImage, setShowImage] = useState(true);
   // Auto-réparation : si l'URL de l'image manque (carte en cache), on la résout du titre.
   const [imgUrl, setImgUrl] = useState<string | undefined>(mapImageUrl);
@@ -1450,10 +1460,12 @@ function MapGrid({
     });
   };
 
-  // Alliés effectivement posés sur une case de départ.
+  // Alliés posés : sur leur case de départ, ou leur position live (mode « combat en cours »).
+  const allyEffPos = (i: number) => (liveOn ? liveAllies[team[i]?.id]?.pos : '') || allyOrder[i];
   const placed = team
-    .map((h, i) => ({ hero: h, idx: i, pos: allyOrder[i] }))
+    .map((h, i) => ({ hero: h, idx: i, pos: allyEffPos(i) }))
     .filter((p) => p.pos);
+  const allyAt = new Map(placed.map((p) => [p.pos, p]));
 
   const enemyPos = new Set(enemyAt.keys());
   const allyPosSet = new Set(placed.map((p) => p.pos));
@@ -1566,9 +1578,10 @@ function MapGrid({
           cols.map((c) => {
             const pos = c + r;
             const en = enemyAt.get(pos);
-            const allyIdx = allyOrder.indexOf(pos);
-            const isAlly = allyIdx >= 0;
-            const ally = isAlly ? team[allyIdx] : undefined; // ton perso posé sur cette case
+            const isStart = allyOrder.indexOf(pos) >= 0; // case de départ (▲ / teinte)
+            const al = allyAt.get(pos); // allié réellement sur cette case (départ ou live)
+            const isAlly = isStart || !!al;
+            const ally = al?.hero; // ton perso posé sur cette case
             const hero = en ? heroByName(en.name) : undefined;
             const isAttack = attackSet.has(pos);
             const isReach = reachSet.has(pos) && !isAttack;
@@ -1581,29 +1594,29 @@ function MapGrid({
             return (
               <div
                 key={pos}
-                onDragOver={liveOn && onMoveEnemy ? (ev) => ev.preventDefault() : undefined}
-                onDrop={liveOn && onMoveEnemy ? () => { if (dragIdx.current != null) { onMoveEnemy(dragIdx.current, pos); dragIdx.current = null; } } : undefined}
+                onDragOver={liveDrag ? (ev) => ev.preventDefault() : undefined}
+                onDrop={liveDrag ? () => { const d = drag.current; drag.current = null; if (!d) return; if (d.kind === 'e') onMoveEnemy?.(d.idx, pos); else onMoveAlly?.(d.id, pos); } : undefined}
                 className={`relative aspect-square rounded-[3px] border ${
                   isAlly ? 'border-sky-400/40' : 'border-white/[0.06]'
-                } ${terrBg} ${isThreat ? 'shadow-[inset_0_0_0_2px_rgba(248,113,113,0.55)]' : ''} ${liveOn && onMoveEnemy ? 'ring-1 ring-inset ring-sky-400/20' : ''}`}
+                } ${terrBg} ${isThreat ? 'shadow-[inset_0_0_0_2px_rgba(248,113,113,0.55)]' : ''} ${liveDrag ? 'ring-1 ring-inset ring-sky-400/20' : ''}`}
               >
                 {overlay ? <span className={`pointer-events-none absolute inset-0 rounded-[3px] ${overlay}`} /> : null}
                 {en ? (
                   <button
                     type="button"
-                    draggable={liveOn && !!onMoveEnemy}
-                    onDragStart={liveOn && onMoveEnemy ? () => { dragIdx.current = enemyIdxAt.get(pos) ?? null; } : undefined}
+                    draggable={liveDrag && !!onMoveEnemy}
+                    onDragStart={onMoveEnemy ? () => { const i = enemyIdxAt.get(pos); if (i != null) drag.current = { kind: 'e', idx: i }; } : undefined}
                     onClick={() => onPick(en)}
                     title={liveOn ? `${en.name} — glisse-le à sa position réelle` : `${en.name} — ${en.hp}/${en.atk}/${en.spd}/${en.def}/${en.res}`}
                     className={`absolute inset-0 flex items-center justify-center rounded-[3px] transition ${
                       selectedPos === pos ? 'ring-2 ring-gold' : 'hover:brightness-125'
-                    } ${liveOn && onMoveEnemy ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                    } ${liveDrag && onMoveEnemy ? 'cursor-grab active:cursor-grabbing' : ''}`}
                   >
                     {hero?.art ? (
-                      <img src={hero.art} alt={en.name} className="h-full w-full object-contain" />
+                      <img src={hero.art} alt={en.name} draggable={false} className="h-full w-full object-contain" />
                     ) : (
                       <span
-                        className={`flex h-[72%] w-[72%] items-center justify-center rounded-full text-[8px] font-bold text-black/80 ${
+                        className={`pointer-events-none flex h-[72%] w-[72%] items-center justify-center rounded-full text-[8px] font-bold text-black/80 ${
                           COLOR_BG[resolveEnemy(en, heroByName).color] ?? 'bg-slate-300/80'
                         }`}
                       >
@@ -1613,13 +1626,15 @@ function MapGrid({
                   </button>
                 ) : ally ? (
                   <span
-                    className="absolute inset-0 flex items-center justify-center"
-                    title={`${ally.name} — ${ally.title}`}
+                    draggable={liveDrag && !!onMoveAlly}
+                    onDragStart={onMoveAlly ? () => { drag.current = { kind: 'a', id: ally.id }; } : undefined}
+                    className={`absolute inset-0 flex items-center justify-center ${liveDrag && onMoveAlly ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                    title={liveOn ? `${ally.name} — glisse-le à sa position réelle` : `${ally.name} — ${ally.title}`}
                   >
                     {ally.art ? (
-                      <img src={ally.art} alt={ally.name} className="h-full w-full object-contain" />
+                      <img src={ally.art} alt={ally.name} className="pointer-events-none h-full w-full object-contain" />
                     ) : (
-                      <span className="flex h-[72%] w-[72%] items-center justify-center rounded-full bg-sky-500/70 text-[8px] font-bold text-black/80">
+                      <span className="pointer-events-none flex h-[72%] w-[72%] items-center justify-center rounded-full bg-sky-500/70 text-[8px] font-bold text-black/80">
                         {shortLabel(ally.name)}
                       </span>
                     )}
