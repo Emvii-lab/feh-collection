@@ -100,19 +100,32 @@ function pFieldBuff(d: string, out: ParsedEffects) {
   }
 }
 
-// Phase d'une clause conditionnelle, pour ne créditer un bonus qu'à la bonne phase.
-// PRUDENT : on ne conditionne QUE si la condition est PUREMENT une phase (pas de « ou »,
-// de seuil de PV, d'adjacence…) ; sinon on garde le bonus « toujours actif » (comportement
-// historique → aucune régression sur les cas complexes).
-function clausePhase(clause: string): 'init' | 'defend' | 'always' {
-  const cond = clause.split(',')[0]; // partie « if … » avant l'effet
-  if (/\bor\b|\bou\b|\bhp\b|\bpv\b|%|within|adjacent|allies?|\d\s*spaces|cases?/.test(cond)) return 'always';
+// Porte d'une clause conditionnelle : dit s'il faut l'APPLIQUER et à quelle PHASE.
+// - `apply` : on évalue les seuils de PV à PV PLEINS (soi=ennemi=100 %, l'état de début
+//   de combat / du 1er échange). Un « si PV ≤ 25 % » est donc FAUX → on n'applique pas
+//   (corrige le sur-comptage de Brazen/Wrath à pleine vie) ; un « si PV ≥ 25 % » est VRAI.
+// - `phase` : init (si le porteur initie) / defend (si attaqué) / always.
+// PRUDENT : condition alternative (« … ou … ») → on applique en « always » (comportement
+// historique, aucune régression). La condition = tout ce qui précède le verbe d'effet.
+function clauseGate(clause: string): { apply: boolean; phase: 'init' | 'defend' | 'always' } {
+  const cut = clause.search(/\b(?:grants?|inflicts?|deals?|reduces?|neutralizes?|confere|inflige|reduit|accorde|enables?)\b/);
+  const cond = cut >= 0 ? clause.slice(0, cut) : clause;
+  if (/\bor\b|\bou\b/.test(cond)) return { apply: true, phase: 'always' };
+  // Seuils de PV, évalués à PV pleins (début de combat).
+  const hpRe = /hp\s*(>=|≥|<=|≤|=|>|<)\s*(\d+)\s*%?/g;
+  let hm: RegExpExecArray | null;
+  while ((hm = hpRe.exec(cond))) {
+    const cur = 100, thr = +hm[2], cmp = hm[1];
+    const ok = cmp === '>=' || cmp === '≥' ? cur >= thr
+      : cmp === '<=' || cmp === '≤' ? cur <= thr
+        : cmp === '>' ? cur > thr : cmp === '<' ? cur < thr : cur === thr;
+    if (!ok) return { apply: false, phase: 'always' };
+  }
   const init = /(?:unit|l'?unite)\s+initiates?\s+combat|l'?unite\s+initie|s'?il\s+initie/.test(cond);
   const foeInit = /foe\s+initiates?\s+combat|ennemi\s+initie/.test(cond);
   const attacked = /unit\s+is\s+attacked|l'?unite\s+est\s+attaquee/.test(cond);
-  if (init && !foeInit) return 'init';
-  if (foeInit || attacked) return 'defend';
-  return 'always';
+  const phase = init && !foeInit ? 'init' : (foeInit || attacked) ? 'defend' : 'always';
+  return { apply: true, phase };
 }
 
 // P1. Bonus fixes « Atk/Res+6 » (porteur), routés par CLAUSE selon la phase (init/defend/
@@ -123,7 +136,9 @@ function pFlatBuffs(d: string, out: ParsedEffects) {
   const always = mk(), init = mk(), defend = mk();
   const re = new RegExp(`(${STAT_RE}(?:/${STAT_RE})*)\\s*\\+\\s*(\\d+)`, 'g');
   for (const clause of d.split(/[.;]/)) {
-    const bucket = clausePhase(clause) === 'init' ? init : clausePhase(clause) === 'defend' ? defend : always;
+    const g = clauseGate(clause);
+    if (!g.apply) continue; // condition de PV non satisfaite à pleine vie → on n'applique pas
+    const bucket = g.phase === 'init' ? init : g.phase === 'defend' ? defend : always;
     re.lastIndex = 0;
     let m: RegExpExecArray | null;
     while ((m = re.exec(clause))) {
