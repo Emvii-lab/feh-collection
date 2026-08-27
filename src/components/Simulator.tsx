@@ -930,6 +930,12 @@ export function Simulator({
                         wikiTerrain={wikiMap.terrain}
                         mapKey={wikiMap.title}
                         mapImageUrl={wikiMap.mapImageUrl}
+                        liveOn={liveOn}
+                        liveEnemies={liveEnemies}
+                        onMoveEnemy={(i, pos) => {
+                          const e = (wikiMap.difficulties[wikiDiff] ?? [])[i];
+                          setLiveEnemies((p) => ({ ...p, ['E' + i]: { ...(p['E' + i] ?? { pos: e?.pos.toLowerCase() ?? '', hp: e?.hp ?? 0 }), pos } }));
+                        }}
                       />
                       <div className="mt-2 flex flex-wrap gap-1.5">
                         {(wikiMap.difficulties[wikiDiff] ?? []).map((u, i) => (
@@ -1048,7 +1054,7 @@ export function Simulator({
                         {liveOn ? (
                           <div className="mt-2 space-y-2 text-[11px]">
                             <p className="text-[10px] leading-snug text-warm-mute/80">
-                              Joue le tour du plan, puis <strong>saisis où sont réellement les ennemis</strong> (case + PV, coche « K.O. » si tué) et, au besoin, la position de tes persos. Relance : le plan repartira de cet état exact — fini l'écart d'IA.
+                              Joue le tour du plan, puis indique où sont réellement les ennemis : <strong>glisse-les directement sur la carte</strong> (ou saisis la case ci-dessous), ajuste leurs PV, coche « K.O. » si tué. Relance : le plan repartira de cet état exact — fini l'écart d'IA.
                               <button type="button" onClick={initLive} className="ml-1 rounded border border-sky-300/40 px-1.5 py-0.5 text-sky-200 hover:bg-sky-500/15">↺ réinitialiser au départ</button>
                             </p>
                             <div>
@@ -1383,6 +1389,7 @@ const BRUSHES: { t: Terrain; label: string }[] = [
 
 function MapGrid({
   enemies, allyPos, team, selectedPos, heroByName, onPick, wikiTerrain, mapKey, mapImageUrl,
+  liveOn = false, liveEnemies = {}, onMoveEnemy,
 }: {
   enemies: WikiEnemy[];
   allyPos: string[];
@@ -1393,7 +1400,11 @@ function MapGrid({
   wikiTerrain: TerrainMap;
   mapKey: string;
   mapImageUrl?: string;
+  liveOn?: boolean;
+  liveEnemies?: Record<string, LiveOv>;
+  onMoveEnemy?: (idx: number, pos: string) => void;
 }) {
+  const dragIdx = useRef<number | null>(null); // index de l'ennemi en cours de glisser (mode live)
   const [showImage, setShowImage] = useState(true);
   // Auto-réparation : si l'URL de l'image manque (carte en cache), on la résout du titre.
   const [imgUrl, setImgUrl] = useState<string | undefined>(mapImageUrl);
@@ -1405,7 +1416,17 @@ function MapGrid({
     return () => { active = false; };
   }, [imgUrl, mapKey]);
   const bg = Boolean(imgUrl) && showImage; // image de fond active
-  const enemyAt = new Map(enemies.map((e) => [e.pos.toLowerCase(), e]));
+  // Positions des ennemis : celles du wiki, sauf en mode « combat en cours » où on
+  // prend les positions/K.O. réels saisis (glissés à la souris). enemyIdxAt = case→index.
+  const enemyAt = new Map<string, WikiEnemy>();
+  const enemyIdxAt = new Map<string, number>();
+  enemies.forEach((e, i) => {
+    const ov = liveOn ? liveEnemies['E' + i] : undefined;
+    if (ov?.dead) return;
+    const pos = (ov?.pos || e.pos).toLowerCase();
+    enemyAt.set(pos, e);
+    enemyIdxAt.set(pos, i);
+  });
   const allyOrder = allyPos.map((p) => p.toLowerCase()); // ordonné : 1re case → 1er perso
   const cols = ['a', 'b', 'c', 'd', 'e', 'f'];
   const rows = [8, 7, 6, 5, 4, 3, 2, 1]; // rangée 8 en haut (camp ennemi)
@@ -1434,7 +1455,7 @@ function MapGrid({
     .map((h, i) => ({ hero: h, idx: i, pos: allyOrder[i] }))
     .filter((p) => p.pos);
 
-  const enemyPos = new Set(enemies.map((e) => e.pos.toLowerCase()));
+  const enemyPos = new Set(enemyAt.keys());
   const allyPosSet = new Set(placed.map((p) => p.pos));
   const occupied = new Set([...enemyPos, ...allyPosSet]);
 
@@ -1560,19 +1581,23 @@ function MapGrid({
             return (
               <div
                 key={pos}
+                onDragOver={liveOn && onMoveEnemy ? (ev) => ev.preventDefault() : undefined}
+                onDrop={liveOn && onMoveEnemy ? () => { if (dragIdx.current != null) { onMoveEnemy(dragIdx.current, pos); dragIdx.current = null; } } : undefined}
                 className={`relative aspect-square rounded-[3px] border ${
                   isAlly ? 'border-sky-400/40' : 'border-white/[0.06]'
-                } ${terrBg} ${isThreat ? 'shadow-[inset_0_0_0_2px_rgba(248,113,113,0.55)]' : ''}`}
+                } ${terrBg} ${isThreat ? 'shadow-[inset_0_0_0_2px_rgba(248,113,113,0.55)]' : ''} ${liveOn && onMoveEnemy ? 'ring-1 ring-inset ring-sky-400/20' : ''}`}
               >
                 {overlay ? <span className={`pointer-events-none absolute inset-0 rounded-[3px] ${overlay}`} /> : null}
                 {en ? (
                   <button
                     type="button"
+                    draggable={liveOn && !!onMoveEnemy}
+                    onDragStart={liveOn && onMoveEnemy ? () => { dragIdx.current = enemyIdxAt.get(pos) ?? null; } : undefined}
                     onClick={() => onPick(en)}
-                    title={`${en.name} — ${en.hp}/${en.atk}/${en.spd}/${en.def}/${en.res}`}
+                    title={liveOn ? `${en.name} — glisse-le à sa position réelle` : `${en.name} — ${en.hp}/${en.atk}/${en.spd}/${en.def}/${en.res}`}
                     className={`absolute inset-0 flex items-center justify-center rounded-[3px] transition ${
                       selectedPos === pos ? 'ring-2 ring-gold' : 'hover:brightness-125'
-                    }`}
+                    } ${liveOn && onMoveEnemy ? 'cursor-grab active:cursor-grabbing' : ''}`}
                   >
                     {hero?.art ? (
                       <img src={hero.art} alt={en.name} className="h-full w-full object-contain" />
