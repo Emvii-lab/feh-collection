@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Color, Hero, WeaponType, MoveType, Stats } from '../types';
 import type { CollStats } from '../lib/collection';
 import {
-  resolveStats, combatVerdict,
-  NO_MODS, type Sim, type Unit, type Verdict, type CombatMods,
+  resolveStats,
+  NO_MODS, type Unit, type CombatMods,
 } from '../lib/combat';
 import { type SolveResult, type PlanTurn } from '../lib/solver';
 import type { SolverResponse } from '../lib/solverWorker';
@@ -89,10 +89,6 @@ function PlanSteps({ turns, startTurn = 1 }: { turns: PlanTurn[]; startTurn?: nu
     </ol>
   );
 }
-const EFF_LABEL: Record<string, string> = {
-  flying: 'Volant', armored: 'Cuirassé', cavalry: 'Cavalier',
-  infantry: 'Fantassin', dragon: 'Dragon', beast: 'Bête',
-};
 const NO_WI: WeaponInfo = { effAgainst: [], effects: EMPTY_EFFECTS(), hasBuild: false };
 
 // Extrait les effets auto-parsés (ParsedEffects) vers les champs de l'ennemi.
@@ -158,13 +154,6 @@ type EnemyState = {
 };
 type UnitMods = { atkBuff: number; guaranteedFollowup: boolean; dmgReductionPct: number };
 
-const VERDICT_META: Record<Verdict, { label: string; cls: string; order: number }> = {
-  ko: { label: 'Le tue (duel)', cls: 'border-emerald-400/40 bg-emerald-500/15 text-emerald-200', order: 0 },
-  win: { label: 'Survit (ne le tue pas)', cls: 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200/90', order: 1 },
-  trade: { label: 'Survit, chip', cls: 'border-gold-deep/40 bg-black/25 text-gold-text', order: 2 },
-  lose: { label: 'Se fait tuer', cls: 'border-red-400/40 bg-red-500/15 text-red-200', order: 3 },
-};
-
 export function Simulator({
   heroes, owned, stats, initialAttacker, userId, onClose,
 }: {
@@ -192,8 +181,7 @@ export function Simulator({
   });
   const [query, setQuery] = useState('');
   const [listOpen, setListOpen] = useState(false);
-  const [expanded, setExpanded] = useState<string | null>(initialAttacker?.id ?? null);
-  const [unitMods, setUnitMods] = useState<Map<string, UnitMods>>(
+  const [unitMods] = useState<Map<string, UnitMods>>(
     () => new Map(load<[string, UnitMods][]>('feh.sim.unitMods', [])),
   );
   // Ennemi : carte du wiki, saisie manuelle, ou un de tes héros.
@@ -391,56 +379,7 @@ export function Simulator({
   const [statsOverride, setStatsOverride] = useState<Map<string, Stats>>(new Map());
   const [modsOverride, setModsOverride] = useState<Map<string, CombatMods>>(new Map());
 
-  const buildUnit = (id: string): Unit | null => {
-    const h = byId.get(id);
-    // Priorité aux stats hypothétiques chargées depuis le théorycraft (héros non possédés).
-    const s = h && (statsOverride.get(id) ?? resolveStats(h, stats.get(id)));
-    if (!h || !s) return null;
-    // Équipe du jeu « chargée » : on rejoue le build modélisé tel quel.
-    const mo = modsOverride.get(id);
-    if (mo) return { hero: h, stats: s, mods: mo };
-    const wi = weaponInfo.get(id) ?? NO_WI;
-    const pu = unitMods.get(id) ?? { atkBuff: 0, guaranteedFollowup: false, dmgReductionPct: 0 };
-    const ef = wi.effects; // effets détectés sur TON arme (best-effort, arme seule)
-    // Les malus que l'ennemi t'inflige sont désormais appliqués PAR LE MOTEUR
-    // (enemyMods.foeXxx), plus besoin de les soustraire ici.
-    return {
-      hero: h, stats: s,
-      mods: {
-        ...NO_MODS, brave: ef.brave, effAgainst: wi.effAgainst,
-        atkBuff: ef.atkBuff + pu.atkBuff,
-        spdBuff: ef.spdBuff, defBuff: ef.defBuff, resBuff: ef.resBuff,
-        initBuff: ef.initBuff, defendBuff: ef.defendBuff,
-        bonusDamage: ef.bonusDamage, bonusDamageStat: ef.bonusDamageStat,
-        counterAnyRange: ef.counterAnyRange, preventFoeCounter: ef.preventFoeCounter,
-        neutralizeFoeBonuses: ef.neutralizeFoeBonuses, pierceFoeReduction: ef.pierceFoeReduction,
-        // malus que TON arme inflige à l'ennemi (Ploy/inflige…)
-        foeAtk: ef.foeAtk, foeSpd: ef.foeSpd, foeDef: ef.foeDef, foeRes: ef.foeRes,
-        fieldBuff: ef.fieldBuff, // bonus de zone que TON perso accorde à tes autres persos
 
-        guaranteedFollowup: ef.guaranteedFollowup || pu.guaranteedFollowup,
-        followupInit: ef.followupInit, followupDefend: ef.followupDefend,
-        cannotBeDoubled: ef.cannotBeDoubled, noFollowup: ef.noFollowup,
-        dmgReductionPct: Math.max(ef.dmgReductionPct, pu.dmgReductionPct),
-        reductionInit: ef.reductionInit, reductionDefend: ef.reductionDefend,
-        flatDmgReduction: ef.flatDmgReduction, special: ef.special,
-      },
-    };
-  };
-
-  const results = useMemo(() => {
-    if (!enemyUnit) return [];
-    return team
-      .map((id) => {
-        const u = buildUnit(id);
-        if (!u) return null;
-        const { verdict, player, foe } = combatVerdict(u, enemyUnit);
-        return { id, unit: u, sim: player, foe, verdict };
-      })
-      .filter((r): r is NonNullable<typeof r> => r !== null)
-      .sort((a, b) => VERDICT_META[a.verdict].order - VERDICT_META[b.verdict].order);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [team, enemyUnit, weaponInfo, unitMods, stats, statsOverride, modsOverride]);
 
   // ===== Solveur de carte : construit le plateau, cherche une ligne gagnante (Web Worker).
   const [solving, setSolving] = useState(false);
@@ -866,15 +805,6 @@ export function Simulator({
                 </button>
               ))}
             </div>
-            <a
-              href={`${import.meta.env.BASE_URL}sim/`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[12px] font-semibold text-gold-text underline decoration-dotted underline-offset-2 hover:text-gold-light"
-              title="Simulateur complet (tous les effets) — nouvel onglet"
-            >
-              Simulateur complet ↗
-            </a>
           </div>
         </div>
 
@@ -1300,10 +1230,10 @@ export function Simulator({
                 ) : null}
               </div>
 
-              {/* ===== Mon équipe & Duels 1v1 ===== */}
+              {/* ===== Mon équipe (composition pour « Résoudre la carte ») ===== */}
               <div className="rounded-xl border border-white/10 bg-black/20 p-3">
                 <div className="mb-1 font-feh text-[12px] font-semibold text-warm-dim">
-                  👥 Mon équipe ({team.length}) — Duels 1v1 face à {enemy.name || 'l\'ennemi'}
+                  👥 Mon équipe ({team.length})
                 </div>
                 <input
                   value={query}
@@ -1331,19 +1261,8 @@ export function Simulator({
                 ) : null}
 
                 {team.length > 0 && (
-                  <div className="mt-2 space-y-1.5 max-h-56 overflow-y-auto pr-1">
-                    {results.map((r) => (
-                      <UnitRow
-                        key={r.id} hero={r.unit.hero} sim={r.sim} foe={r.foe}
-                        enemy={enemyUnit!} unit={r.unit}
-                        expanded={expanded === r.id}
-                        onToggle={() => setExpanded((x) => (x === r.id ? null : r.id))}
-                        onRemove={() => toggleMember(r.id)}
-                        mods={unitMods.get(r.id) ?? { atkBuff: 0, guaranteedFollowup: false, dmgReductionPct: 0 }}
-                        onMods={(m) => setUnitMods((prev) => new Map(prev).set(r.id, m))}
-                        weaponInfo={weaponInfo.get(r.id)}
-                      />
-                    ))}
+                  <div className="mt-2 space-y-1 max-h-56 overflow-y-auto pr-1">
+                    {team.map((id) => <TeamChip key={id} hero={byId.get(id)} onRemove={() => toggleMember(id)} />)}
                   </div>
                 )}
               </div>
@@ -1408,21 +1327,10 @@ export function Simulator({
               ) : null}
             </div>
 
-            {/* Résultats */}
+            {/* Persos de l'équipe */}
             {team.length > 0 && (
-              <div className="space-y-2">
-                {results.map((r) => (
-                  <UnitRow
-                    key={r.id} hero={r.unit.hero} sim={r.sim} foe={r.foe}
-                    enemy={enemyUnit!} unit={r.unit}
-                    expanded={expanded === r.id}
-                    onToggle={() => setExpanded((x) => (x === r.id ? null : r.id))}
-                    onRemove={() => toggleMember(r.id)}
-                    mods={unitMods.get(r.id) ?? { atkBuff: 0, guaranteedFollowup: false, dmgReductionPct: 0 }}
-                    onMods={(m) => setUnitMods((prev) => new Map(prev).set(r.id, m))}
-                    weaponInfo={weaponInfo.get(r.id)}
-                  />
-                ))}
+              <div className="space-y-1">
+                {team.map((id) => <TeamChip key={id} hero={byId.get(id)} onRemove={() => toggleMember(id)} />)}
               </div>
             )}
           </div>
@@ -1741,127 +1649,18 @@ function MapGrid({
   );
 }
 
-function UnitRow({
-  hero, sim, foe, enemy, unit, expanded, onToggle, onRemove, mods, onMods, weaponInfo,
-}: {
-  hero: Hero; sim: Sim; foe: Sim | null; enemy: Unit; unit: Unit;
-  expanded: boolean; onToggle: () => void; onRemove: () => void;
-  mods: UnitMods; onMods: (m: UnitMods) => void; weaponInfo?: WeaponInfo;
-}) {
+// Ligne compacte d'un perso de l'équipe (composition pour « Résoudre la carte »).
+function TeamChip({ hero, onRemove }: { hero?: Hero; onRemove: () => void }) {
+  if (!hero) return null;
   return (
-    <div className="rounded-xl border border-white/10 overflow-hidden">
-      <div className="flex items-center gap-2 p-2.5">
-        <button type="button" onClick={onToggle} className="flex min-w-0 flex-1 items-center gap-2 text-left">
-          {hero.art ? (
-            <img
-              src={hero.art}
-              alt=""
-              className="h-9 w-9 shrink-0 object-contain drop-shadow-[0_1px_2px_rgba(0,0,0,.6)]"
-            />
-          ) : null}
-          <span className="min-w-0 truncate font-feh text-[13px] font-semibold text-warm-text">
-            {hero.name} <span className="text-warm-mute">— {hero.title}</span>
-          </span>
-        </button>
-        <button type="button" onClick={onToggle} className="shrink-0 text-warm-mute hover:text-warm-dim" title="Détails">
-          {expanded ? '▴' : '▾'}
-        </button>
-        <button type="button" onClick={onRemove} className="shrink-0 text-warm-mute hover:text-red-300" title="Retirer">✕</button>
-      </div>
-      {expanded ? (
-        <div className="border-t border-white/10 bg-black/20 p-3">
-          <p className="mb-1 font-feh text-[11px] font-semibold text-gold-text/90">⚔️ Ta phase (tu attaques)</p>
-          <Result sim={sim} atk={unit} def={enemy} />
-          {foe ? (
-            <>
-              <p className="mb-1 mt-3 font-feh text-[11px] font-semibold text-amber-300/85">
-                🛡️ Phase ennemie ({enemy.hero.name} t'attaque)
-              </p>
-              <Result sim={foe} atk={enemy} def={unit} />
-            </>
-          ) : null}
-          <div className="mt-3 space-y-1.5 border-t border-white/10 pt-2 text-[11.5px]">
-            {weaponInfo ? (
-              <p className="text-emerald-300/80">
-                Auto (arme) :{' '}
-                {(() => {
-                  const ef = weaponInfo.effects;
-                  return [
-                    ef.brave ? 'Brave' : '',
-                    weaponInfo.effAgainst.length
-                      ? `eff. vs ${weaponInfo.effAgainst.map((e) => EFF_LABEL[e] ?? e).join(', ')}`
-                      : '',
-                    [
-                      ef.atkBuff ? `ATQ+${ef.atkBuff}` : '',
-                      ef.spdBuff ? `VIT+${ef.spdBuff}` : '',
-                      ef.defBuff ? `DÉF+${ef.defBuff}` : '',
-                      ef.resBuff ? `RÉS+${ef.resBuff}` : '',
-                    ].filter(Boolean).join(' '),
-                    ef.counterAnyRange ? 'riposte à toute portée' : '',
-                    ef.preventFoeCounter ? 'coupe sa riposte' : '',
-                    ef.neutralizeFoeBonuses ? 'annule ses bonus' : '',
-                  ].filter(Boolean).join(' · ') || 'aucun effet détecté';
-                })()}
-              </p>
-            ) : null}
-            <p className="text-[10.5px] text-warm-mute/70">
-              Ajoute à la main tes passifs/spéciales (Fury, Death Blow, esquive…) que l'app ne connaît pas :
-            </p>
-            <NumRow label="+ ATQ en combat (passifs)" value={mods.atkBuff} onChange={(n) => onMods({ ...mods, atkBuff: n })} />
-            <NumRow label="Réduction de dégâts subis (%)" value={mods.dmgReductionPct} onChange={(n) => onMods({ ...mods, dmgReductionPct: n })} />
-            <Check label="Double garanti" checked={mods.guaranteedFollowup} onChange={(b) => onMods({ ...mods, guaranteedFollowup: b })} />
-          </div>
-        </div>
+    <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-black/25 px-2.5 py-1.5">
+      {hero.art ? (
+        <img src={hero.art} alt="" className="h-7 w-7 shrink-0 object-contain drop-shadow-[0_1px_2px_rgba(0,0,0,.6)]" />
       ) : null}
-    </div>
-  );
-}
-
-function Result({ sim, atk, def }: { sim: Sim; atk: Unit; def: Unit }) {
-  return (
-    <div className="space-y-2">
-      {sim.vantage ? (
-        <p className="text-[11px] italic text-amber-300/80">L'ennemi a le Vantage : il frappe en premier.</p>
-      ) : null}
-      <Line who={atk.hero.name} arrow={`→ ${def.hero.name}`} r={sim.atk} targetHp={def.stats.hp} hpAfter={sim.defHpAfter} />
-      {sim.counter ? (
-        <Line who={def.hero.name} arrow={`↩ ${atk.hero.name}`} r={sim.counter} targetHp={atk.stats.hp} hpAfter={sim.counter.atkHpAfter} faded />
-      ) : (
-        <p className="px-1 text-[11.5px] italic text-warm-mute">
-          {def.hero.name} ne contre pas
-          {def.hero.weaponType === 'Staff' ? ' (bâton)' : ' (portée différente)'}
-          {sim.ko ? ' — et tombe.' : '.'}
-        </p>
-      )}
-    </div>
-  );
-}
-
-function Line({
-  who, arrow, r, targetHp, hpAfter, faded,
-}: {
-  who: string; arrow: string;
-  r: { dmg: number; hits: number; total: number; targetsRes: boolean; effective: boolean };
-  targetHp: number; hpAfter: number; faded?: boolean;
-}) {
-  const pct = targetHp > 0 ? Math.round((hpAfter / targetHp) * 100) : 0;
-  return (
-    <div className={`rounded-lg border border-white/10 bg-black/20 p-2.5 ${faded ? 'opacity-90' : ''}`}>
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="min-w-0 truncate font-feh text-[12.5px] font-semibold text-warm-text">
-          {who} <span className="text-warm-mute">{arrow}</span>
-        </span>
-        <span className="shrink-0 font-feh text-[12.5px] text-gold-text">
-          {r.hits === 0 ? '—' : <>{r.dmg}{r.hits > 1 ? ` ×${r.hits} = ${r.total}` : ''}</>}
-          <span className="ml-1 text-[10px] text-warm-mute">
-            ({r.targetsRes ? 'RÉS' : 'DÉF'}{r.effective ? ', eff.' : ''})
-          </span>
-        </span>
-      </div>
-      <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-black/50">
-        <div className={`h-full rounded-full ${hpAfter <= 0 ? 'bg-red-500/80' : 'bg-emerald-500/70'}`} style={{ width: `${pct}%` }} />
-      </div>
-      <div className="mt-0.5 text-right text-[10.5px] text-warm-mute">PV : {hpAfter} / {targetHp}</div>
+      <span className="min-w-0 flex-1 truncate font-feh text-[12.5px] font-semibold text-warm-text">
+        {hero.name} <span className="font-normal text-warm-mute">— {hero.title}</span>
+      </span>
+      <button type="button" onClick={onRemove} title="Retirer de l'équipe" className="shrink-0 text-warm-mute hover:text-red-300">✕</button>
     </div>
   );
 }
@@ -1885,23 +1684,5 @@ function Select({ value, onChange, options }: { value: string; onChange: (v: str
       className="rounded-lg border border-white/10 bg-black/40 px-2 py-1.5 text-[12px] text-warm-text outline-none focus:border-gold/50">
       {options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
     </select>
-  );
-}
-function Check({ label, checked, onChange }: { label: string; checked: boolean; onChange: (b: boolean) => void }) {
-  return (
-    <label className="inline-flex items-center gap-1.5 text-warm-dim">
-      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="accent-gold-deep" />
-      {label}
-    </label>
-  );
-}
-function NumRow({ label, value, onChange }: { label: string; value: number; onChange: (n: number) => void }) {
-  return (
-    <label className="flex items-center justify-between gap-2 text-warm-dim">
-      <span>{label}</span>
-      <input inputMode="numeric" value={value || ''} placeholder="0"
-        onChange={(e) => onChange(parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0)}
-        className="w-16 rounded border border-white/10 bg-black/40 px-2 py-1 text-center font-feh text-[12px] text-warm-text outline-none focus:border-gold/50" />
-    </label>
   );
 }
