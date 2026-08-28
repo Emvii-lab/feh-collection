@@ -814,11 +814,11 @@ export function Simulator({
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-black/70 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-black/70 p-3 md:p-5 backdrop-blur-sm"
       onClick={onClose}
     >
       <div
-        className="relative my-auto w-full max-w-3xl rounded-2xl border border-gold/30 bg-[#33291a] p-5 font-feh shadow-[0_20px_60px_-15px_rgba(0,0,0,0.8)]"
+        className="relative my-auto w-full max-w-5xl xl:max-w-7xl rounded-2xl border border-gold/30 bg-[#33291a] p-4 md:p-6 font-feh shadow-[0_20px_60px_-15px_rgba(0,0,0,0.8)]"
         onClick={(e) => e.stopPropagation()}
       >
         <button
@@ -829,442 +829,507 @@ export function Simulator({
           ✕
         </button>
 
-        <h2 className="mb-1 font-feh text-[17px] font-semibold text-gold-text">
-          ⚔️ Simulateur — mon équipe vs une carte
-        </h2>
-        <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1">
-          <p className="text-[12px] text-warm-mute">
-            Qui de ton équipe bat cette carte ?
-          </p>
-          <a
-            href={`${import.meta.env.BASE_URL}sim/`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[12px] font-semibold text-gold-text underline decoration-dotted underline-offset-2 hover:text-gold-light"
-            title="Simulateur complet (tous les effets) — nouvel onglet"
-          >
-            Simulateur complet ↗
-          </a>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-gold/20 pb-2.5 pr-8">
+          <div>
+            <h2 className="font-feh text-[17px] font-semibold text-gold-text">
+              ⚔️ Simulateur — mon équipe vs une carte
+            </h2>
+            <p className="text-[12px] text-warm-mute">
+              Qui de ton équipe bat cette carte ?
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="flex overflow-hidden rounded-lg border border-white/10 text-[11px]">
+              {(['wiki', 'manual', 'hero'] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setEnMode(m)}
+                  className={`px-2.5 py-1 font-feh transition ${
+                    enMode === m ? 'bg-red-500/25 text-red-100 font-semibold' : 'text-warm-mute hover:text-warm-dim'
+                  }`}
+                >
+                  {m === 'wiki' ? 'Carte (wiki)' : m === 'manual' ? 'Stats saisies' : 'Mes héros'}
+                </button>
+              ))}
+            </div>
+            <a
+              href={`${import.meta.env.BASE_URL}sim/`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[12px] font-semibold text-gold-text underline decoration-dotted underline-offset-2 hover:text-gold-light"
+              title="Simulateur complet (tous les effets) — nouvel onglet"
+            >
+              Simulateur complet ↗
+            </a>
+          </div>
         </div>
 
-        {/* ===== Carte ennemie ===== */}
-        <div className="mb-4 rounded-xl border border-red-400/25 bg-red-950/20 p-3">
-          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <span className="font-feh text-[13px] font-semibold text-red-200/90">
-              🛡️ Carte ennemie
-            </span>
-            <div className="flex items-center gap-2">
-              <div className="flex overflow-hidden rounded-lg border border-white/10 text-[11px]">
-                {(['wiki', 'manual', 'hero'] as const).map((m) => (
+        {/* Mode Héros */}
+        {enMode === 'hero' ? (
+          <div className="mb-4 rounded-xl border border-red-400/25 bg-red-950/20 p-3">
+            <select
+              value={enemyHeroId}
+              onChange={(e) => setEnemyHeroId(e.target.value)}
+              className="w-full rounded-lg border border-white/10 bg-black/40 px-2.5 py-1.5 text-[13px] text-warm-text outline-none focus:border-gold/50"
+            >
+              <option value="">Choisir un de tes héros (stats saisies)…</option>
+              {roster.map((h) => (
+                <option key={h.id} value={h.id}>{h.name} — {h.title}</option>
+              ))}
+            </select>
+            {enemyUnit ? (
+              <p className="mt-1.5 text-[11px] text-warm-mute">
+                {enemyUnit.stats.hp} PV · {enemyUnit.stats.atk} ATQ · {enemyUnit.stats.spd} VIT ·{' '}
+                {enemyUnit.stats.def} DÉF · {enemyUnit.stats.res} RÉS
+              </p>
+            ) : roster.length === 0 ? (
+              <p className="mt-1.5 text-[11px] text-amber-300/85">
+                Aucun héros avec stats saisies — renseigne-les dans l'onglet Stats d'une fiche.
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+
+        {/* Mode Wiki (URL input) */}
+        {enMode === 'wiki' ? (
+          <div className="mb-3 rounded-xl border border-sky-400/20 bg-sky-950/20 p-2.5">
+            <div className="flex gap-2">
+              <input
+                value={wikiUrl}
+                onChange={(e) => setWikiUrl(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && loadWiki()}
+                placeholder="Colle l'URL du wiki (page « … (map) »)…"
+                className="min-w-0 flex-1 rounded border border-white/10 bg-black/40 px-2.5 py-1.5 text-[12px] text-warm-text outline-none focus:border-gold/50"
+              />
+              <button
+                type="button"
+                onClick={loadWiki}
+                disabled={wikiLoading || !wikiUrl.trim()}
+                className="shrink-0 rounded border border-gold-deep/40 bg-black/30 px-3.5 py-1.5 font-feh text-[12px] font-semibold text-gold-text transition hover:border-gold/60 disabled:opacity-50"
+              >
+                {wikiLoading ? '…' : 'Charger'}
+              </button>
+            </div>
+            {wikiError ? (
+              <p className="mt-1.5 text-[11px] text-amber-300/85">{wikiError}</p>
+            ) : null}
+          </div>
+        ) : null}
+
+        {/* ===== VUE 2 COLONNES (CÔTE À CÔTE) LORSQU'UNE CARTE EST CHARGÉE ===== */}
+        {enMode === 'wiki' && wikiMap ? (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+            {/* COLONNE GAUCHE (ÉCRAN 1) : CARTE INTERACTIVE, DRAG & DROP, PINCEAUX */}
+            <div className="lg:col-span-5 xl:col-span-5 rounded-xl border border-red-400/25 bg-red-950/20 p-3 lg:sticky lg:top-2">
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-1.5">
+                <span className="font-feh text-[12.5px] font-semibold text-red-200/90">
+                  🗺️ Plateau & Déplacements
+                </span>
+                <div className="flex flex-wrap gap-1">
+                  {Object.keys(wikiMap.difficulties).map((d) => (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => setWikiDiff(d)}
+                      className={`rounded px-2 py-0.5 font-feh text-[10.5px] transition ${
+                        wikiDiff === d ? 'bg-gold-deep/50 text-warm-text font-semibold' : 'text-warm-mute hover:text-warm-dim'
+                      }`}
+                    >
+                      {d}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <MapGrid
+                enemies={wikiMap.difficulties[wikiDiff] ?? []}
+                allyPos={wikiMap.allyPos}
+                team={team.map((id) => byId.get(id)).filter((h): h is Hero => !!h)}
+                selectedPos={wikiSel}
+                heroByName={heroByName}
+                onPick={pickWikiEnemy}
+                wikiTerrain={wikiMap.terrain}
+                mapKey={wikiMap.title}
+                mapImageUrl={wikiMap.mapImageUrl}
+                liveOn={liveOn}
+                liveEnemies={liveEnemies}
+                liveAllies={liveAllies}
+                onMoveEnemy={(i, pos) => {
+                  const e = (wikiMap.difficulties[wikiDiff] ?? [])[i];
+                  setLiveEnemies((p) => ({ ...p, ['E' + i]: { ...(p['E' + i] ?? { pos: e?.pos.toLowerCase() ?? '', hp: e?.hp ?? 0 }), pos } }));
+                }}
+                onMoveAlly={(id, pos) => {
+                  const idx = team.indexOf(id);
+                  const start = wikiMap.allyPos[idx]?.toLowerCase() ?? '';
+                  setLiveAllies((p) => ({ ...p, [id]: { ...(p[id] ?? { pos: start, hp: 0 }), pos } }));
+                }}
+              />
+
+              <div className="mt-2 flex flex-wrap gap-1 justify-center">
+                {(wikiMap.difficulties[wikiDiff] ?? []).map((u, i) => (
                   <button
-                    key={m}
+                    key={i}
                     type="button"
-                    onClick={() => setEnMode(m)}
-                    className={`px-2 py-1 font-feh transition ${
-                      enMode === m ? 'bg-red-500/25 text-red-100' : 'text-warm-mute hover:text-warm-dim'
+                    onClick={() => pickWikiEnemy(u)}
+                    title={`${u.hp}/${u.atk}/${u.spd}/${u.def}/${u.res} · ${u.weapon}`}
+                    className={`rounded-md border px-1.5 py-0.5 text-[11px] transition ${
+                      wikiSel === u.pos
+                        ? 'border-gold/60 bg-gold-deep/25 text-gold-light font-semibold'
+                        : 'border-white/10 bg-black/30 text-warm-text hover:border-gold/50 hover:text-gold-light'
                     }`}
                   >
-                    {m === 'wiki' ? 'Carte (wiki)' : m === 'manual' ? 'Stats saisies' : 'Mes héros'}
+                    {u.name}
                   </button>
                 ))}
               </div>
-              <button
-                type="button"
-                onClick={() => setAdvEnemy((v) => !v)}
-                className="text-[11px] text-warm-mute underline decoration-dotted hover:text-warm-dim"
-              >
-                {advEnemy ? 'Masquer' : 'Compétences ▾'}
-              </button>
-            </div>
-          </div>
 
-          {enMode === 'hero' ? (
-            <>
-              <select
-                value={enemyHeroId}
-                onChange={(e) => setEnemyHeroId(e.target.value)}
-                className="w-full rounded-lg border border-white/10 bg-black/40 px-2.5 py-1.5 text-[13px] text-warm-text outline-none focus:border-gold/50"
-              >
-                <option value="">Choisir un de tes héros (stats saisies)…</option>
-                {roster.map((h) => (
-                  <option key={h.id} value={h.id}>{h.name} — {h.title}</option>
-                ))}
-              </select>
+              {/* Stats & Compétences de l'ennemi inspecté */}
               {enemyUnit ? (
-                <p className="mt-1.5 text-[11px] text-warm-mute">
-                  {enemyUnit.stats.hp} PV · {enemyUnit.stats.atk} ATQ · {enemyUnit.stats.spd} VIT ·{' '}
-                  {enemyUnit.stats.def} DÉF · {enemyUnit.stats.res} RÉS
-                </p>
-              ) : roster.length === 0 ? (
-                <p className="mt-1.5 text-[11px] text-amber-300/85">
-                  Aucun héros avec stats saisies — renseigne-les dans l'onglet Stats d'une fiche.
-                </p>
-              ) : null}
-            </>
-          ) : (
-            <>
-              {enMode === 'wiki' ? (
-                <div className="mb-2 rounded-lg border border-sky-400/20 bg-sky-950/20 p-2.5">
-                  <div className="flex gap-2">
-                    <input
-                      value={wikiUrl}
-                      onChange={(e) => setWikiUrl(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && loadWiki()}
-                      placeholder="Colle l'URL du wiki (page « … (map) »)…"
-                      className="min-w-0 flex-1 rounded border border-white/10 bg-black/40 px-2 py-1.5 text-[12px] text-warm-text outline-none focus:border-gold/50"
-                    />
-                    <button
-                      type="button"
-                      onClick={loadWiki}
-                      disabled={wikiLoading || !wikiUrl.trim()}
-                      className="shrink-0 rounded border border-gold-deep/40 bg-black/30 px-3 py-1.5 font-feh text-[12px] font-semibold text-gold-text transition hover:border-gold/60 disabled:opacity-50"
-                    >
-                      {wikiLoading ? '…' : 'Charger'}
-                    </button>
+                <div className="mt-2.5 rounded-lg border border-white/10 bg-black/35 p-2 text-[11px]">
+                  <div className="flex items-center justify-between text-warm-dim mb-1">
+                    <span className="font-semibold text-gold-text">{enemy.name || 'Ennemi sélectionné'}</span>
+                    <span className="text-[10px] text-warm-mute">{enemy.weapon} · {enemy.move}</span>
                   </div>
-                  {wikiError ? (
-                    <p className="mt-1.5 text-[11px] text-amber-300/85">{wikiError}</p>
-                  ) : null}
-                  {wikiMap ? (
-                    <div className="mt-2">
-                      <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
-                        <span className="text-[11px] text-warm-mute">Difficulté :</span>
-                        {Object.keys(wikiMap.difficulties).map((d) => (
-                          <button
-                            key={d}
-                            type="button"
-                            onClick={() => setWikiDiff(d)}
-                            className={`rounded px-2 py-0.5 font-feh text-[11px] transition ${
-                              wikiDiff === d ? 'bg-gold-deep/50 text-warm-text' : 'text-warm-mute hover:text-warm-dim'
-                            }`}
-                          >
-                            {d}
-                          </button>
-                        ))}
+                  <div className="grid grid-cols-5 gap-1 text-center">
+                    {STAT_ROW.map((s) => (
+                      <div key={s.key} className="rounded bg-black/30 py-0.5">
+                        <span className="block text-[8px] uppercase tracking-wide text-warm-mute">{s.label}</span>
+                        <span className="font-feh font-semibold text-warm-text">{enemy.stats[s.key] || '—'}</span>
                       </div>
-                      <MapGrid
-                        enemies={wikiMap.difficulties[wikiDiff] ?? []}
-                        allyPos={wikiMap.allyPos}
-                        team={team.map((id) => byId.get(id)).filter((h): h is Hero => !!h)}
-                        selectedPos={wikiSel}
-                        heroByName={heroByName}
-                        onPick={pickWikiEnemy}
-                        wikiTerrain={wikiMap.terrain}
-                        mapKey={wikiMap.title}
-                        mapImageUrl={wikiMap.mapImageUrl}
-                        liveOn={liveOn}
-                        liveEnemies={liveEnemies}
-                        liveAllies={liveAllies}
-                        onMoveEnemy={(i, pos) => {
-                          const e = (wikiMap.difficulties[wikiDiff] ?? [])[i];
-                          setLiveEnemies((p) => ({ ...p, ['E' + i]: { ...(p['E' + i] ?? { pos: e?.pos.toLowerCase() ?? '', hp: e?.hp ?? 0 }), pos } }));
-                        }}
-                        onMoveAlly={(id, pos) => {
-                          const idx = team.indexOf(id);
-                          const start = wikiMap.allyPos[idx]?.toLowerCase() ?? '';
-                          setLiveAllies((p) => ({ ...p, [id]: { ...(p[id] ?? { pos: start, hp: 0 }), pos } }));
-                        }}
-                      />
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        {(wikiMap.difficulties[wikiDiff] ?? []).map((u, i) => (
-                          <button
-                            key={i}
-                            type="button"
-                            onClick={() => pickWikiEnemy(u)}
-                            title={`${u.hp}/${u.atk}/${u.spd}/${u.def}/${u.res} · ${u.weapon}`}
-                            className={`rounded-md border px-2 py-1 text-[11.5px] transition ${
-                              wikiSel === u.pos
-                                ? 'border-gold/60 bg-gold-deep/25 text-gold-light'
-                                : 'border-white/10 bg-black/30 text-warm-text hover:border-gold/50 hover:text-gold-light'
-                            }`}
-                          >
-                            {u.name}
-                          </button>
-                        ))}
-                      </div>
-                      <p className="mt-1.5 text-[10.5px] text-warm-mute/80">
-                        Clique un ennemi → ses <strong className="text-warm-dim">stats</strong> se remplissent (couleur/arme ajustables).
-                      </p>
-                      <p className="mt-1 text-[10.5px] text-emerald-300/80">
-                        ✓ Ses <strong>compétences sont auto-appliquées</strong> : bonus, dégâts (fixes/%stat),
-                        réduction, coupe-riposte, neutralisation, malus, et sa <strong>spéciale</strong> (jauge simulée).
-                        Reste peu capté : effets conditionnels (PV, position). Ajuste au besoin via « Compétences ▾ ».
-                      </p>
-
-                      {/* ===== Solveur de carte (C3/C4) ===== */}
-                      <div className="mt-3 rounded-lg border border-fuchsia-400/30 bg-fuchsia-500/[0.06] p-2.5">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <button
-                            type="button"
-                            disabled={solving}
-                            onClick={() => runSolver()}
-                            className="rounded-lg border border-fuchsia-300/40 bg-fuchsia-500/20 px-3 py-1.5 font-feh text-[12px] font-semibold text-fuchsia-100 transition hover:bg-fuchsia-500/30 disabled:opacity-60"
-                          >
-                            {solving ? `⏳ ${solveNodes.toLocaleString('fr')} états…` : '🧠 Résoudre la carte'}
-                          </button>
-                          {solving ? (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                workerRef.current?.terminate();
-                                workerRef.current = null;
-                                setSolving(false);
-                                setSolveRes({ win: false, turns: [], nodes: solveNodes, reason: 'Calcul arrêté.' });
-                              }}
-                              className="rounded-lg border border-red-300/40 bg-red-500/15 px-2.5 py-1.5 font-feh text-[12px] text-red-200 transition hover:bg-red-500/25"
-                            >
-                              ✕ Stop
-                            </button>
-                          ) : null}
-                          <label className="flex items-center gap-1 text-[10.5px] text-warm-mute">
-                            tours
-                            <select
-                              value={solveTurns}
-                              onChange={(e) => setSolveTurns(+e.target.value)}
-                              className="rounded border border-white/10 bg-black/40 px-1 py-0.5 text-warm-text"
-                            >
-                              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => <option key={n} value={n}>{n}</option>)}
-                            </select>
-                          </label>
-                          <label className="flex items-center gap-1 text-[10.5px] text-warm-mute" title={wikiMap?.mustSurvive ? 'Carte de survie/défense : perdre un perso = défaite (défaut décoché).' : 'Carte « Rout » : tu perds seulement si TOUS tes persos meurent, donc perdre une unité est permis (défaut coché).'}>
-                            <input type="checkbox" checked={solveDeaths} onChange={(e) => setSolveDeaths(e.target.checked)} className="h-3 w-3 accent-fuchsia-400" />
-                            autoriser les pertes
-                            {wikiMap ? <span className="text-warm-mute/60">{wikiMap.mustSurvive ? '(survie exigée)' : '(Rout)'}</span> : null}
-                          </label>
-                        </div>
-                        {solving ? (
-                          <ProgressBar color="bg-fuchsia-400/80" pct={((Date.now() - solveStart.current) / solveLimit.current) * 100} />
-                        ) : null}
-                        {solveRes ? (
-                          <div className="mt-2 text-[11.5px]">
-                            {solveRes.win ? (
-                              <>
-                                <p className="font-feh font-semibold text-emerald-300">
-                                  ✅ {planStartTurn > 1
-                                    ? `Gagnable en ${solveRes.turns.length} tour(s) de plus (à partir du tour ${planStartTurn})`
-                                    : `Gagnable en ${solveRes.turns.length} tour(s)`} — plan :
-                                </p>
-                                <p className="mt-1 rounded-md border border-amber-400/30 bg-amber-500/10 px-2 py-1 text-[10.5px] leading-snug text-amber-200">
-                                  ⚠️ Dégâts calculés avec les <strong>stats et compétences saisies</strong>.
-                                  {team.some((id) => statsOverride.has(id))
-                                    ? ' Cette équipe utilise des persos supposés niveau 40 bien montés (chargés du théorycraft).'
-                                    : ' Niveau 40 monté recommandé.'}{' '}
-                                  Si ton perso en jeu est d'un <strong>niveau inférieur</strong> (ex. 20) ou <strong>sans compétences</strong>, les K.O. ne tomberont pas pareil et la carte peut ne pas être résolue.
-                                </p>
-                                <PlanSteps turns={solveRes.turns} startTurn={planStartTurn} />
-                                <p className="mt-1 text-[9.5px] text-warm-mute/70">
-                                  {solveRes.nodes} états explorés. « IA prévue » = mouvements ennemis <strong>estimés</strong> par le modèle ; en jeu l'IA peut bouger autrement, ce qui décale le plan.
-                                </p>
-                              </>
-                            ) : (
-                              <p className="text-amber-300/90">
-                                ❓ {solveRes.reason}
-                                <span className="text-warm-mute/70"> ({solveRes.nodes} états explorés — augmente les tours, ou coche « autoriser les pertes ».)</span>
-                              </p>
-                            )}
-                          </div>
-                        ) : (
-                          <p className="mt-1.5 text-[10px] text-warm-mute/70">
-                            Cherche une suite de placements/attaques qui nettoie la carte (départ sur tes cases, IA ennemie simulée). Calcul en tâche de fond (jusqu'à ~30 s selon les tours) : « pas trouvé » = aucune ligne dans la limite, pas forcément impossible. Plus de tours = recherche plus longue.
-                          </p>
-                        )}
-                      </div>
-
-                      {/* ===== Re-planification (combat en cours) ===== */}
-                      <div className="mt-2 rounded-lg border border-sky-400/30 bg-sky-500/[0.06] p-2.5">
-                        <label className="flex items-center gap-1.5 font-feh text-[12px] text-sky-200">
-                          <input
-                            type="checkbox"
-                            checked={liveOn}
-                            onChange={(e) => { const on = e.target.checked; setLiveOn(on); if (on) initLive(); }}
-                            className="h-3.5 w-3.5 accent-sky-400"
-                          />
-                          🔄 Combat en cours — re-planifier depuis l'état réel
-                        </label>
-                        {liveOn ? (
-                          <div className="mt-2 space-y-2 text-[11px]">
-                            <p className="text-[10px] leading-snug text-warm-mute/80">
-                              Joue le tour du plan, puis <strong>glisse les ennemis ET tes persos directement sur la carte</strong> à leur position réelle (ou saisis les cases ci-dessous), ajuste les PV, coche « K.O. » si tué. Relance : le plan repartira de cet état exact — fini l'écart d'IA.
-                              <button type="button" onClick={initLive} className="ml-1 rounded border border-sky-300/40 px-1.5 py-0.5 text-sky-200 hover:bg-sky-500/15">↺ réinitialiser au départ</button>
-                            </p>
-                            <label className="flex items-center gap-1.5 text-[10.5px] text-warm-dim">
-                              Tour actuel (déjà joué : {Math.max(0, liveTurn - 1)}) :
-                              <input type="number" min={2} value={liveTurn} onChange={(e) => setLiveTurn(Math.max(2, +e.target.value || 2))} className="w-12 rounded bg-black/30 px-1 py-0.5 text-center text-warm-text" />
-                              <span className="text-warm-mute/70">→ le plan sera numéroté à partir de ce tour.</span>
-                            </label>
-                            <div>
-                              <p className="font-feh text-[10.5px] text-rose-300/90">Ennemis</p>
-                              {(wikiMap.difficulties[wikiDiff] ?? []).map((e, i) => {
-                                const k = 'E' + i;
-                                const ov = liveEnemies[k] ?? { pos: e.pos.toLowerCase(), hp: e.hp };
-                                return (
-                                  <div key={k} className={`flex items-center gap-1.5 py-0.5 ${ov.dead ? 'opacity-40' : ''}`}>
-                                    <span className="w-24 truncate text-warm-dim">{e.name.split(':')[0]}</span>
-                                    <input value={ov.pos} onChange={(ev) => setLiveEnemies((p) => ({ ...p, [k]: { ...ov, pos: ev.target.value.toLowerCase().replace(/[^a-f1-8]/g, '') } }))} placeholder="c5" className="w-10 rounded bg-black/30 px-1 py-0.5 text-center text-warm-text" />
-                                    <input type="number" value={ov.hp} onChange={(ev) => setLiveEnemies((p) => ({ ...p, [k]: { ...ov, hp: +ev.target.value || 0 } }))} className="w-14 rounded bg-black/30 px-1 py-0.5 text-center text-warm-text" />
-                                    <span className="text-warm-mute">PV</span>
-                                    <label className="ml-auto flex items-center gap-1 text-warm-mute"><input type="checkbox" checked={!!ov.dead} onChange={(ev) => setLiveEnemies((p) => ({ ...p, [k]: { ...ov, dead: ev.target.checked } }))} className="h-3 w-3 accent-rose-400" />K.O.</label>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                            <div>
-                              <p className="font-feh text-[10.5px] text-emerald-300/90">Tes persos</p>
-                              {team.map((id, i) => {
-                                if (i >= wikiMap.allyPos.length) return null;
-                                const h = byId.get(id);
-                                if (!h) return null;
-                                const ov = liveAllies[id] ?? { pos: wikiMap.allyPos[i].toLowerCase(), hp: 0 };
-                                return (
-                                  <div key={id} className={`flex items-center gap-1.5 py-0.5 ${ov.dead ? 'opacity-40' : ''}`}>
-                                    <span className="w-24 truncate text-warm-dim">{h.name}</span>
-                                    <input value={ov.pos} onChange={(ev) => setLiveAllies((p) => ({ ...p, [id]: { ...ov, pos: ev.target.value.toLowerCase().replace(/[^a-f1-8]/g, '') } }))} placeholder="c2" className="w-10 rounded bg-black/30 px-1 py-0.5 text-center text-warm-text" />
-                                    <input type="number" value={ov.hp} onChange={(ev) => setLiveAllies((p) => ({ ...p, [id]: { ...ov, hp: +ev.target.value || 0 } }))} className="w-14 rounded bg-black/30 px-1 py-0.5 text-center text-warm-text" />
-                                    <span className="text-warm-mute">PV</span>
-                                    <label className="ml-auto flex items-center gap-1 text-warm-mute"><input type="checkbox" checked={!!ov.dead} onChange={(ev) => setLiveAllies((p) => ({ ...p, [id]: { ...ov, dead: ev.target.checked } }))} className="h-3 w-3 accent-rose-400" />K.O.</label>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                            <button type="button" disabled={solving} onClick={() => runSolver({ enemies: liveEnemies, allies: liveAllies })} className="rounded-lg border border-sky-300/50 bg-sky-500/20 px-3 py-1.5 font-feh text-[12px] text-sky-100 transition hover:bg-sky-500/30 disabled:opacity-50">
-                              🔄 Résoudre depuis cet état
-                            </button>
-                          </div>
-                        ) : null}
-                      </div>
-
-                      {/* ===== Recherche d'équipe ===== */}
-                      <div className="mt-2 rounded-lg border border-cyan-400/30 bg-cyan-500/[0.06] p-2.5">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <button
-                            type="button"
-                            disabled={searching}
-                            onClick={runTeamSearch}
-                            className="rounded-lg border border-cyan-300/40 bg-cyan-500/20 px-3 py-1.5 font-feh text-[12px] font-semibold text-cyan-100 transition hover:bg-cyan-500/30 disabled:opacity-60"
-                          >
-                            {searching && searchScope === 'roster'
-                              ? `⏳ équipe ${searchProg.tested}/${searchProg.total || '…'}…`
-                              : '🔎 Équipe (ta collection)'}
-                          </button>
-                          <button
-                            type="button"
-                            disabled={searching}
-                            onClick={runTheoryCraft}
-                            title="Cherche parmi TOUS les héros du jeu une équipe qui nettoie la carte"
-                            className="rounded-lg border border-violet-300/40 bg-violet-500/20 px-3 py-1.5 font-feh text-[12px] font-semibold text-violet-100 transition hover:bg-violet-500/30 disabled:opacity-60"
-                          >
-                            {searching && searchScope === 'game'
-                              ? `⏳ équipe ${searchProg.tested}/${searchProg.total || '…'}…`
-                              : '🔮 Meilleure équipe (tout le jeu)'}
-                          </button>
-                          {searching ? (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                stopSearchWorkers();
-                                setSearching(false);
-                                setSearchRes({ teams: [], tested: searchProg.tested, poolSize: 0, reason: 'Recherche arrêtée.' });
-                              }}
-                              className="rounded-lg border border-red-300/40 bg-red-500/15 px-2.5 py-1.5 font-feh text-[12px] text-red-200 transition hover:bg-red-500/25"
-                            >
-                              ✕ Stop
-                            </button>
-                          ) : null}
-                        </div>
-                        {searching ? (
-                          <ProgressBar
-                            color="bg-cyan-400/80"
-                            indeterminate={!searchProg.total}
-                            pct={searchProg.total ? (searchProg.tested / searchProg.total) * 100 : 0}
-                          />
-                        ) : null}
-                        {searchRes ? (
-                          searchRes.teams.length ? (
-                            <div className="mt-2 text-[11.5px]">
-                              <p className="font-feh font-semibold text-emerald-300">
-                                ✅ {searchRes.teams.length > 1
-                                  ? `${searchRes.teams.length} équipes qui nettoient la carte`
-                                  : 'Meilleure équipe trouvée'}{searchScope === 'game' ? ' (héros du jeu)' : ''} :
-                              </p>
-                              <ul className="mt-1 space-y-1">
-                                {searchRes.teams.map((t, i) => (
-                                  <li key={i} className="rounded bg-black/25 px-2 py-1">
-                                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                                      <span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-warm-dim">
-                                        {t.names.map((n, j) => {
-                                          const mUrl = t.moveUrls?.[j] ?? byId.get(t.ids[j])?.moveUrl;
-                                          const wUrl = t.weaponUrls?.[j] ?? byId.get(t.ids[j])?.weaponUrl;
-                                          return (
-                                          <span key={j} className="inline-flex items-center gap-0.5">
-                                            <MoveIcon type={t.moves?.[j] as MoveType} iconUrl={mUrl} size={14} />
-                                            <WeaponIcon type={t.weapons?.[j] as WeaponType} iconUrl={wUrl} size={14} />
-                                            <span>{n}{t.titles?.[j] ? <span className="text-warm-mute/70"> : {t.titles[j]}</span> : null}</span>
-                                            {builtIds.has(t.ids[j]) ? (
-                                              <span title="Build enregistré (kit exact)" className="rounded bg-emerald-500/25 px-1 text-[8.5px] font-semibold text-emerald-200">build</span>
-                                            ) : (
-                                              <span title="Kit natif complet du learnset (arme + spéciale + passives), pas un build enregistré" className="rounded bg-white/10 px-1 text-[8.5px] text-warm-mute">kit natif</span>
-                                            )}
-                                            {j < t.names.length - 1 ? <span className="text-warm-mute/50">·</span> : null}
-                                          </span>
-                                          );
-                                        })}
-                                      </span>
-                                      <span className="text-[10px] text-warm-mute">({t.turns} tour{t.turns > 1 ? 's' : ''})</span>
-                                      <div className="ml-auto flex items-center gap-1.5">
-                                        <button
-                                          type="button"
-                                          onClick={() => setOpenPlan(openPlan === i ? null : i)}
-                                          className="rounded border border-amber-300/40 bg-amber-500/10 px-2 py-0.5 text-[10.5px] text-amber-200 hover:bg-amber-500/20"
-                                        >
-                                          {openPlan === i ? '▾ masquer le plan' : '▸ voir le plan'}
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() => loadTeam(t)}
-                                          title={searchScope === 'game' ? 'Charge ces héros (stats montées + kit natif) dans le simulateur pour les inspecter' : 'Charge cette équipe dans le simulateur'}
-                                          className="rounded border border-emerald-300/40 bg-emerald-500/15 px-2 py-0.5 text-[10.5px] text-emerald-200 hover:bg-emerald-500/25"
-                                        >
-                                          charger cette équipe
-                                        </button>
-                                      </div>
-                                    </div>
-                                    {openPlan === i ? (
-                                      <div className="mt-1.5 border-t border-white/10 pt-1.5">
-                                        <PlanSteps turns={t.plan} />
-                                        <p className="mt-1 text-[9px] text-warm-mute/60">
-                                          « IA prévue » = déplacements ennemis estimés ; en jeu l'IA peut jouer autrement.
-                                        </p>
-                                      </div>
-                                    ) : null}
-                                  </li>
-                                ))}
-                              </ul>
-                              {searchScope === 'game' ? (
-                                <p className="mt-1 rounded-md border border-amber-400/30 bg-amber-500/10 px-2 py-1 text-[10.5px] leading-snug text-amber-200">
-                                  ⚠️ Ces héros sont supposés <strong>niveau 40, bien montés</strong> (compétences comprises). Si les tiens sont d'un <strong>niveau ou build inférieur</strong>, le plan ne tiendra pas et la carte peut ne pas être résolue. C'est un indicateur « qui viser / monter », pas un plan pour un roster non monté.
-                                </p>
-                              ) : null}
-                              <p className="mt-1 text-[9.5px] text-warm-mute/70">
-                                {searchRes.tested} équipe(s) testée(s) sur {searchRes.poolSize} candidats.
-                                {searchScope === 'game'
-                                  ? ' Héros évalués avec leur VRAI kit natif (arme + spéciale + passives A/B/C lus du learnset), montés (+10 fusions/dragonflowers/IV) et les essentiels qu\'on inherit (riposte à distance, réduction), sur ≥6 tours.'
-                                  : <> <span className="text-emerald-300/70">build</span> = kit exact · <span className="text-warm-mute">kit natif</span> = kit du learnset (sans ton build).</>}
-                                {' '}Plans valables si l'IA joue standard.
-                              </p>
-                            </div>
-                          ) : (
-                            <p className="mt-2 text-[11.5px] text-amber-300/90">❓ {searchRes.reason}</p>
-                          )
-                        ) : (
-                          <p className="mt-1.5 text-[10px] text-warm-mute/70">
-                            <strong>Équipe (ta collection)</strong> : cherche une équipe gagnante parmi tes persos. <strong>Meilleure équipe (tout le jeu)</strong> : compose la meilleure équipe parmi TOUS les héros du jeu face à ce boss (qui viser/monter).
-                          </p>
-                        )}
-                      </div>
-                    </div>
+                    ))}
+                  </div>
+                  {enemy.autoNote ? (
+                    <p className="mt-1 text-[9.5px] text-emerald-300/85 leading-tight">{enemy.autoNote}</p>
                   ) : null}
                 </div>
               ) : null}
+            </div>
+
+            {/* COLONNE DROITE (ÉCRAN 2) : SOLVEUR, PLAN ÉTAPE PAR ÉTAPE, RE-PLANIFICATION, RECHERCHE D'ÉQUIPE */}
+            <div className="lg:col-span-7 xl:col-span-7 space-y-3">
+              {/* ===== Solveur de carte (C3/C4) ===== */}
+              <div className="rounded-xl border border-fuchsia-400/30 bg-fuchsia-500/[0.06] p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-fuchsia-400/20 pb-2">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={solving}
+                      onClick={() => runSolver()}
+                      className="rounded-lg border border-fuchsia-300/40 bg-fuchsia-500/25 px-3.5 py-1.5 font-feh text-[12.5px] font-semibold text-fuchsia-100 transition hover:bg-fuchsia-500/35 disabled:opacity-60"
+                    >
+                      {solving ? `⏳ ${solveNodes.toLocaleString('fr')} états…` : '🧠 Résoudre la carte'}
+                    </button>
+                    {solving ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          workerRef.current?.terminate();
+                          workerRef.current = null;
+                          setSolving(false);
+                          setSolveRes({ win: false, turns: [], nodes: solveNodes, reason: 'Calcul arrêté.' });
+                        }}
+                        className="rounded-lg border border-red-300/40 bg-red-500/15 px-2.5 py-1.5 font-feh text-[12px] text-red-200 transition hover:bg-red-500/25"
+                      >
+                        ✕ Stop
+                      </button>
+                    ) : null}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="flex items-center gap-1 text-[11px] text-warm-mute">
+                      tours :
+                      <select
+                        value={solveTurns}
+                        onChange={(e) => setSolveTurns(+e.target.value)}
+                        className="rounded border border-white/10 bg-black/40 px-1.5 py-0.5 text-warm-text font-semibold"
+                      >
+                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => <option key={n} value={n}>{n}</option>)}
+                      </select>
+                    </label>
+                    <label className="flex items-center gap-1 text-[11px] text-warm-mute" title={wikiMap?.mustSurvive ? 'Carte de survie/défense : perdre un perso = défaite.' : 'Carte « Rout » : perdre une unité est permis.'}>
+                      <input type="checkbox" checked={solveDeaths} onChange={(e) => setSolveDeaths(e.target.checked)} className="h-3.5 w-3.5 accent-fuchsia-400" />
+                      pertes autorisées
+                    </label>
+                  </div>
+                </div>
+
+                {solving ? (
+                  <div className="mt-2">
+                    <ProgressBar color="bg-fuchsia-400/80" pct={((Date.now() - solveStart.current) / solveLimit.current) * 100} />
+                  </div>
+                ) : null}
+
+                {solveRes ? (
+                  <div className="mt-2 text-[11.5px]">
+                    {solveRes.win ? (
+                      <>
+                        <p className="font-feh font-semibold text-emerald-300 text-[13px]">
+                          ✅ {planStartTurn > 1
+                            ? `Gagnable en ${solveRes.turns.length} tour(s) de plus (à partir du tour ${planStartTurn})`
+                            : `Gagnable en ${solveRes.turns.length} tour(s)`} — plan des déplacements :
+                        </p>
+                        <div className="mt-2 max-h-[380px] overflow-y-auto pr-1">
+                          <PlanSteps turns={solveRes.turns} startTurn={planStartTurn} />
+                        </div>
+                        <p className="mt-1 text-[9.5px] text-warm-mute/70">
+                          {solveRes.nodes.toLocaleString('fr')} états explorés. Déplacements calculés pour le positionnement en cours.
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-amber-300/90">
+                        ❓ {solveRes.reason}
+                        <span className="text-warm-mute/70"> ({solveRes.nodes.toLocaleString('fr')} états explorés — augmente les tours, ou coche « autoriser les pertes ».)</span>
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="mt-1.5 text-[10.5px] text-warm-mute/80">
+                    Trouve automatiquement la suite de déplacements & attaques pour nettoyer la carte.
+                  </p>
+                )}
+              </div>
+
+              {/* ===== Re-planification (combat en cours) ===== */}
+              <div className="rounded-xl border border-sky-400/30 bg-sky-500/[0.06] p-3">
+                <div className="flex items-center justify-between">
+                  <label className="flex items-center gap-1.5 font-feh text-[12.5px] font-semibold text-sky-200 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={liveOn}
+                      onChange={(e) => { const on = e.target.checked; setLiveOn(on); if (on) initLive(); }}
+                      className="h-4 w-4 accent-sky-400"
+                    />
+                    🔄 Combat en cours — re-planifier depuis l'état réel
+                  </label>
+                  {liveOn ? (
+                    <button type="button" onClick={initLive} className="rounded border border-sky-300/40 px-2 py-0.5 text-[10.5px] text-sky-200 hover:bg-sky-500/15">
+                      ↺ réinitialiser
+                    </button>
+                  ) : null}
+                </div>
+
+                {liveOn ? (
+                  <div className="mt-2.5 space-y-2 text-[11px]">
+                    <p className="text-[10px] leading-snug text-warm-mute/90">
+                      💡 <strong>Glisse les ennemis ET tes persos directement sur la carte à gauche</strong> (Drag & Drop), ajuste les PV ci-dessous si besoin, puis relance le solveur.
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <label className="flex items-center gap-1.5 text-[11px] text-warm-dim">
+                        Tour actuel :
+                        <input type="number" min={2} value={liveTurn} onChange={(e) => setLiveTurn(Math.max(2, +e.target.value || 2))} className="w-12 rounded bg-black/40 px-1.5 py-0.5 text-center text-warm-text font-bold" />
+                      </label>
+                      <button
+                        type="button"
+                        disabled={solving}
+                        onClick={() => runSolver({ enemies: liveEnemies, allies: liveAllies })}
+                        className="ml-auto rounded-lg border border-sky-300/50 bg-sky-500/25 px-3 py-1 font-feh text-[12px] font-semibold text-sky-100 transition hover:bg-sky-500/35 disabled:opacity-50"
+                      >
+                        🔄 Re-calculer le plan
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2">
+                      <div className="rounded-lg bg-black/25 p-2">
+                        <p className="font-feh text-[10.5px] font-semibold text-rose-300/90 mb-1">Ennemis (PV & position)</p>
+                        {(wikiMap.difficulties[wikiDiff] ?? []).map((e, i) => {
+                          const k = 'E' + i;
+                          const ov = liveEnemies[k] ?? { pos: e.pos.toLowerCase(), hp: e.hp };
+                          return (
+                            <div key={k} className={`flex items-center gap-1.5 py-0.5 ${ov.dead ? 'opacity-40' : ''}`}>
+                              <span className="w-20 truncate text-[10.5px] text-warm-dim">{e.name.split(':')[0]}</span>
+                              <input value={ov.pos} onChange={(ev) => setLiveEnemies((p) => ({ ...p, [k]: { ...ov, pos: ev.target.value.toLowerCase().replace(/[^a-f1-8]/g, '') } }))} placeholder="c5" className="w-9 rounded bg-black/40 px-1 py-0.5 text-center text-[11px] text-warm-text" />
+                              <input type="number" value={ov.hp} onChange={(ev) => setLiveEnemies((p) => ({ ...p, [k]: { ...ov, hp: +ev.target.value || 0 } }))} className="w-12 rounded bg-black/40 px-1 py-0.5 text-center text-[11px] text-warm-text" />
+                              <label className="ml-auto flex items-center gap-1 text-[10px] text-warm-mute"><input type="checkbox" checked={!!ov.dead} onChange={(ev) => setLiveEnemies((p) => ({ ...p, [k]: { ...ov, dead: ev.target.checked } }))} className="h-3 w-3 accent-rose-400" />K.O.</label>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div className="rounded-lg bg-black/25 p-2">
+                        <p className="font-feh text-[10.5px] font-semibold text-emerald-300/90 mb-1">Tes persos (PV & position)</p>
+                        {team.map((id, i) => {
+                          if (i >= wikiMap.allyPos.length) return null;
+                          const h = byId.get(id);
+                          if (!h) return null;
+                          const ov = liveAllies[id] ?? { pos: wikiMap.allyPos[i].toLowerCase(), hp: 0 };
+                          return (
+                            <div key={id} className={`flex items-center gap-1.5 py-0.5 ${ov.dead ? 'opacity-40' : ''}`}>
+                              <span className="w-20 truncate text-[10.5px] text-warm-dim">{h.name}</span>
+                              <input value={ov.pos} onChange={(ev) => setLiveAllies((p) => ({ ...p, [id]: { ...ov, pos: ev.target.value.toLowerCase().replace(/[^a-f1-8]/g, '') } }))} placeholder="c2" className="w-9 rounded bg-black/40 px-1 py-0.5 text-center text-[11px] text-warm-text" />
+                              <input type="number" value={ov.hp} onChange={(ev) => setLiveAllies((p) => ({ ...p, [id]: { ...ov, hp: +ev.target.value || 0 } }))} className="w-12 rounded bg-black/40 px-1 py-0.5 text-center text-[11px] text-warm-text" />
+                              <label className="ml-auto flex items-center gap-1 text-[10px] text-warm-mute"><input type="checkbox" checked={!!ov.dead} onChange={(ev) => setLiveAllies((p) => ({ ...p, [id]: { ...ov, dead: ev.target.checked } }))} className="h-3 w-3 accent-rose-400" />K.O.</label>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+
+              {/* ===== Recherche d'équipe ===== */}
+              <div className="rounded-xl border border-cyan-400/30 bg-cyan-500/[0.06] p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={searching}
+                    onClick={runTeamSearch}
+                    className="rounded-lg border border-cyan-300/40 bg-cyan-500/20 px-3 py-1.5 font-feh text-[12px] font-semibold text-cyan-100 transition hover:bg-cyan-500/30 disabled:opacity-60"
+                  >
+                    {searching && searchScope === 'roster'
+                      ? `⏳ équipe ${searchProg.tested}/${searchProg.total || '…'}…`
+                      : '🔎 Équipe (ta collection)'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={searching}
+                    onClick={runTheoryCraft}
+                    title="Cherche parmi TOUS les héros du jeu une équipe qui nettoie la carte"
+                    className="rounded-lg border border-violet-300/40 bg-violet-500/20 px-3 py-1.5 font-feh text-[12px] font-semibold text-violet-100 transition hover:bg-violet-500/30 disabled:opacity-60"
+                  >
+                    {searching && searchScope === 'game'
+                      ? `⏳ équipe ${searchProg.tested}/${searchProg.total || '…'}…`
+                      : '🔮 Meilleure équipe (tout le jeu)'}
+                  </button>
+                  {searching ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        stopSearchWorkers();
+                        setSearching(false);
+                        setSearchRes({ teams: [], tested: searchProg.tested, poolSize: 0, reason: 'Recherche arrêtée.' });
+                      }}
+                      className="rounded-lg border border-red-300/40 bg-red-500/15 px-2.5 py-1.5 font-feh text-[12px] text-red-200 transition hover:bg-red-500/25"
+                    >
+                      ✕ Stop
+                    </button>
+                  ) : null}
+                </div>
+                {searching ? (
+                  <div className="mt-2">
+                    <ProgressBar
+                      color="bg-cyan-400/80"
+                      indeterminate={!searchProg.total}
+                      pct={searchProg.total ? (searchProg.tested / searchProg.total) * 100 : 0}
+                    />
+                  </div>
+                ) : null}
+                {searchRes ? (
+                  searchRes.teams.length ? (
+                    <div className="mt-2 text-[11.5px]">
+                      <p className="font-feh font-semibold text-emerald-300">
+                        ✅ {searchRes.teams.length > 1
+                          ? `${searchRes.teams.length} équipes qui nettoient la carte`
+                          : 'Meilleure équipe trouvée'}{searchScope === 'game' ? ' (héros du jeu)' : ''} :
+                      </p>
+                      <ul className="mt-1 space-y-1">
+                        {searchRes.teams.map((t, i) => (
+                          <li key={i} className="rounded bg-black/25 px-2 py-1">
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                              <span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-warm-dim">
+                                {t.names.map((n, j) => {
+                                  const mUrl = t.moveUrls?.[j] ?? byId.get(t.ids[j])?.moveUrl;
+                                  const wUrl = t.weaponUrls?.[j] ?? byId.get(t.ids[j])?.weaponUrl;
+                                  return (
+                                  <span key={j} className="inline-flex items-center gap-0.5">
+                                    <MoveIcon type={t.moves?.[j] as MoveType} iconUrl={mUrl} size={14} />
+                                    <WeaponIcon type={t.weapons?.[j] as WeaponType} iconUrl={wUrl} size={14} />
+                                    <span>{n}{t.titles?.[j] ? <span className="text-warm-mute/70"> : {t.titles[j]}</span> : null}</span>
+                                    {builtIds.has(t.ids[j]) ? (
+                                      <span title="Build enregistré (kit exact)" className="rounded bg-emerald-500/25 px-1 text-[8.5px] font-semibold text-emerald-200">build</span>
+                                    ) : (
+                                      <span title="Kit natif complet du learnset" className="rounded bg-white/10 px-1 text-[8.5px] text-warm-mute">kit natif</span>
+                                    )}
+                                    {j < t.names.length - 1 ? <span className="text-warm-mute/50">·</span> : null}
+                                  </span>
+                                  );
+                                })}
+                              </span>
+                              <span className="text-[10px] text-warm-mute">({t.turns} tour{t.turns > 1 ? 's' : ''})</span>
+                              <div className="ml-auto flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => setOpenPlan(openPlan === i ? null : i)}
+                                  className="rounded border border-amber-300/40 bg-amber-500/10 px-2 py-0.5 text-[10.5px] text-amber-200 hover:bg-amber-500/20"
+                                >
+                                  {openPlan === i ? '▾ masquer' : '▸ voir le plan'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => loadTeam(t)}
+                                  className="rounded border border-emerald-300/40 bg-emerald-500/15 px-2 py-0.5 text-[10.5px] text-emerald-200 hover:bg-emerald-500/25"
+                                >
+                                  charger
+                                </button>
+                              </div>
+                            </div>
+                            {openPlan === i ? (
+                              <div className="mt-1.5 border-t border-white/10 pt-1.5">
+                                <PlanSteps turns={t.plan} />
+                              </div>
+                            ) : null}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : (
+                    <p className="mt-2 text-[11.5px] text-amber-300/90">❓ {searchRes.reason}</p>
+                  )
+                ) : null}
+              </div>
+
+              {/* ===== Mon équipe & Duels 1v1 ===== */}
+              <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                <div className="mb-1 font-feh text-[12px] font-semibold text-warm-dim">
+                  👥 Mon équipe ({team.length}) — Duels 1v1 face à {enemy.name || 'l\'ennemi'}
+                </div>
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  onFocus={() => setListOpen(true)}
+                  onBlur={() => setTimeout(() => setListOpen(false), 150)}
+                  placeholder="Ajouter des persos à l'équipe…"
+                  className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-1.5 text-[12px] text-warm-text outline-none focus:border-gold/50"
+                />
+                {listOpen ? (
+                  <div className="mt-1 max-h-44 overflow-y-auto rounded-lg border border-white/10 bg-black/70">
+                    {filtered.slice(0, 30).map((h) => (
+                      <button
+                        key={h.id}
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => toggleMember(h.id)}
+                        className="flex w-full items-center gap-2 px-3 py-1 text-left text-[12px] text-warm-text hover:bg-white/[0.06]"
+                      >
+                        <span className="min-w-0 flex-1 truncate">{h.name} <span className="text-warm-mute">— {h.title}</span></span>
+                        {team.includes(h.id) ? <span className="text-emerald-300 text-[11px]">✓</span> : <span className="text-warm-mute text-[11px]">+</span>}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+
+                {team.length > 0 && (
+                  <div className="mt-2 space-y-1.5 max-h-56 overflow-y-auto pr-1">
+                    {results.map((r) => (
+                      <UnitRow
+                        key={r.id} hero={r.unit.hero} sim={r.sim} foe={r.foe}
+                        enemy={enemyUnit} unit={r.unit}
+                        expanded={expanded === r.id}
+                        onToggle={() => setExpanded((x) => (x === r.id ? null : r.id))}
+                        onRemove={() => toggleMember(r.id)}
+                        mods={unitMods.get(r.id) ?? { atkBuff: 0, guaranteedFollowup: false, dmgReductionPct: 0 }}
+                        onMods={(m) => setUnitMods((prev) => new Map(prev).set(r.id, m))}
+                        weaponInfo={weaponInfo.get(r.id)}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : (
+          /* MODE MANUEL OU INITIAL SANS CARTE WIKI */
+          <div className="space-y-4">
+            <div className="rounded-xl border border-red-400/25 bg-red-950/20 p-3">
               <div className="grid grid-cols-3 gap-2">
                 <Select value={enemy.color} onChange={(v) => setEnemy((e) => ({ ...e, color: v as Color }))}
                   options={COLORS.map((c) => [c.v, c.label])} />
@@ -1287,114 +1352,62 @@ export function Simulator({
                   </label>
                 ))}
               </div>
-              <p className="mt-1.5 text-[10.5px] text-warm-mute/80">
-                Touche la carte en jeu pour lire ses 5 stats (niv. 40).
-              </p>
-              {enemy.autoNote ? (
-                <p className="mt-1 text-[10.5px] text-emerald-300/85">{enemy.autoNote}</p>
-              ) : null}
-            </>
-          )}
-
-          {advEnemy ? (
-            <div className="mt-3 space-y-2 border-t border-white/10 pt-3 text-[11.5px]">
-              <ModRow>
-                <Check label="Arme Brave (×2)" checked={enemy.brave} onChange={(b) => setEnemy((e) => ({ ...e, brave: b }))} />
-                <Check label="Vantage (contre en 1er)" checked={enemy.vantage} onChange={(b) => setEnemy((e) => ({ ...e, vantage: b }))} />
-                <Check label="Double garanti" checked={enemy.guaranteedFollowup} onChange={(b) => setEnemy((e) => ({ ...e, guaranteedFollowup: b }))} />
-                <Check label="Empêche ton doublon" checked={enemy.cannotBeDoubled} onChange={(b) => setEnemy((e) => ({ ...e, cannotBeDoubled: b }))} />
-              </ModRow>
-              <NumRow label="ATQ en combat (+)" value={enemy.atkBuff} onChange={(n) => setEnemy((e) => ({ ...e, atkBuff: n }))} />
-              <NumRow label="Réduction de dégâts (%)" value={enemy.dmgReductionPct} onChange={(n) => setEnemy((e) => ({ ...e, dmgReductionPct: n }))} />
-              <EffPicker value={enemy.effAgainst} onChange={(v) => setEnemy((e) => ({ ...e, effAgainst: v }))} label="Efficace contre" />
             </div>
-          ) : null}
-        </div>
 
-        {/* ===== Ajouter des persos ===== */}
-        <div className="mb-3">
-          <div className="mb-1 font-feh text-[12px] font-semibold text-warm-dim">
-            👥 Mon équipe à tester ({team.length})
-          </div>
-          <p className="mb-1 text-[10px] text-warm-mute/70">
-            Verdicts en <strong>duel 1v1</strong> contre l'ennemi sélectionné (« Le tue » = ce perso le tue seul). Pour savoir si l'équipe nettoie <strong>toute</strong> la carte, utilise « Résoudre la carte ».
-          </p>
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onFocus={() => setListOpen(true)}
-            onBlur={() => setTimeout(() => setListOpen(false), 150)}
-            placeholder="Clique ici pour ajouter tes persos…"
-            className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-[13px] text-warm-text outline-none focus:border-gold/50"
-          />
-          {listOpen ? (
-            <div className="mt-1 max-h-52 overflow-y-auto rounded-lg border border-white/10 bg-black/60">
-              {roster.length === 0 ? (
-                <p className="px-3 py-3 text-[12px] text-amber-300/85">
-                  Aucun perso jouable : le simulateur n'affiche que tes héros
-                  <strong> possédés dont tu as saisi les stats</strong> (LVL/PV/ATQ… dans
-                  l'onglet Stats d'une fiche). Renseigne-les d'abord.
-                </p>
-              ) : filtered.length === 0 ? (
-                <p className="px-3 py-2 text-[12px] text-warm-mute">Aucun résultat pour « {query} ».</p>
-              ) : (
-                filtered.slice(0, 40).map((h) => (
-                  <button
-                    key={h.id}
-                    type="button"
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => toggleMember(h.id)}
-                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12.5px] text-warm-text hover:bg-white/[0.06]"
-                  >
-                    {h.art ? (
-                      <img src={h.art} alt="" className="h-8 w-8 shrink-0 object-contain" />
-                    ) : (
-                      <span className="h-8 w-8 shrink-0" />
-                    )}
-                    <span className="min-w-0 flex-1 truncate">
-                      {h.name} <span className="text-warm-mute">— {h.title}</span>
-                    </span>
-                    {team.includes(h.id) ? <span className="shrink-0 text-emerald-300">✓ ajouté</span> : <span className="shrink-0 text-warm-mute">+</span>}
-                  </button>
-                ))
-              )}
-            </div>
-          ) : null}
-        </div>
-
-        {/* ===== Résultats ===== */}
-        {!enemyUnit ? (
-          <p className="rounded-xl border border-white/10 bg-black/25 p-4 text-center text-[13px] text-warm-dim">
-            Saisis les 5 stats de la carte ennemie pour lancer les calculs.
-          </p>
-        ) : team.length === 0 ? (
-          <p className="rounded-xl border border-white/10 bg-black/25 p-4 text-center text-[13px] text-warm-dim">
-            Ajoute des persos ci-dessus pour voir qui bat cette carte.
-          </p>
-        ) : (
-          <div className="space-y-2">
-            {results.map((r) => (
-              <UnitRow
-                key={r.id} hero={r.unit.hero} sim={r.sim} foe={r.foe}
-                enemy={enemyUnit} unit={r.unit}
-                expanded={expanded === r.id}
-                onToggle={() => setExpanded((x) => (x === r.id ? null : r.id))}
-                onRemove={() => toggleMember(r.id)}
-                mods={unitMods.get(r.id) ?? { atkBuff: 0, guaranteedFollowup: false, dmgReductionPct: 0 }}
-                onMods={(m) => setUnitMods((prev) => new Map(prev).set(r.id, m))}
-                weaponInfo={weaponInfo.get(r.id)}
+            {/* Ajouter des persos */}
+            <div>
+              <div className="mb-1 font-feh text-[12px] font-semibold text-warm-dim">
+                👥 Mon équipe à tester ({team.length})
+              </div>
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onFocus={() => setListOpen(true)}
+                onBlur={() => setTimeout(() => setListOpen(false), 150)}
+                placeholder="Clique ici pour ajouter tes persos…"
+                className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-[13px] text-warm-text outline-none focus:border-gold/50"
               />
-            ))}
+              {listOpen ? (
+                <div className="mt-1 max-h-52 overflow-y-auto rounded-lg border border-white/10 bg-black/60">
+                  {filtered.slice(0, 40).map((h) => (
+                    <button
+                      key={h.id}
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => toggleMember(h.id)}
+                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12.5px] text-warm-text hover:bg-white/[0.06]"
+                    >
+                      <span className="min-w-0 flex-1 truncate">{h.name} <span className="text-warm-mute">— {h.title}</span></span>
+                      {team.includes(h.id) ? <span className="text-emerald-300">✓</span> : <span className="text-warm-mute">+</span>}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+
+            {/* Résultats */}
+            {team.length > 0 && (
+              <div className="space-y-2">
+                {results.map((r) => (
+                  <UnitRow
+                    key={r.id} hero={r.unit.hero} sim={r.sim} foe={r.foe}
+                    enemy={enemyUnit} unit={r.unit}
+                    expanded={expanded === r.id}
+                    onToggle={() => setExpanded((x) => (x === r.id ? null : r.id))}
+                    onRemove={() => toggleMember(r.id)}
+                    mods={unitMods.get(r.id) ?? { atkBuff: 0, guaranteedFollowup: false, dmgReductionPct: 0 }}
+                    onMods={(m) => setUnitMods((prev) => new Map(prev).set(r.id, m))}
+                    weaponInfo={weaponInfo.get(r.id)}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         )}
 
         <p className="mt-4 border-t border-white/10 pt-3 text-[11px] leading-relaxed text-warm-mute/80">
-          <strong className="text-amber-300/90">Estimation approximative.</strong> Auto depuis tes armes :
-          efficacité, Brave, bonus en combat de l'arme. Mais le simulateur ne connaît <strong className="text-warm-dim">ni
-          les passifs/spéciales équipés, ni les compétences de l'ennemi, ni les réductions de dégâts</strong> —
-          donc le résultat peut <strong className="text-warm-dim">différer du jeu dans les deux sens</strong> sur les
-          unités à kit chargé (boss). Pour l'exact, fie-toi à la <strong className="text-warm-dim">prévision de
-          combat en jeu</strong>, ou ajuste à la main les ▾ (toi et l'ennemi via « Compétences ▾ »).
+          <strong className="text-amber-300/90">Estimation tactique.</strong> Auto depuis tes armes et compétences :
+          efficacité, Brave, bonus en combat, réduction de dégâts, Veines divines (Glace), compétences Save/Garde.
         </p>
       </div>
     </div>
