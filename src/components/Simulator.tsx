@@ -89,7 +89,6 @@ function PlanSteps({ turns, startTurn = 1 }: { turns: PlanTurn[]; startTurn?: nu
     </ol>
   );
 }
-const EFF = ['flying', 'armored', 'cavalry', 'infantry', 'dragon', 'beast'] as const;
 const EFF_LABEL: Record<string, string> = {
   flying: 'Volant', armored: 'Cuirassé', cavalry: 'Cavalier',
   infantry: 'Fantassin', dragon: 'Dragon', beast: 'Bête',
@@ -197,7 +196,6 @@ export function Simulator({
   const [unitMods, setUnitMods] = useState<Map<string, UnitMods>>(
     () => new Map(load<[string, UnitMods][]>('feh.sim.unitMods', [])),
   );
-  const [advEnemy, setAdvEnemy] = useState(false);
   // Ennemi : carte du wiki, saisie manuelle, ou un de tes héros.
   const [enMode, setEnMode] = useState<'wiki' | 'manual' | 'hero'>(() => {
     const m = load<string>('feh.sim.enMode', 'wiki');
@@ -1337,7 +1335,7 @@ export function Simulator({
                     {results.map((r) => (
                       <UnitRow
                         key={r.id} hero={r.unit.hero} sim={r.sim} foe={r.foe}
-                        enemy={enemyUnit} unit={r.unit}
+                        enemy={enemyUnit!} unit={r.unit}
                         expanded={expanded === r.id}
                         onToggle={() => setExpanded((x) => (x === r.id ? null : r.id))}
                         onRemove={() => toggleMember(r.id)}
@@ -1416,7 +1414,7 @@ export function Simulator({
                 {results.map((r) => (
                   <UnitRow
                     key={r.id} hero={r.unit.hero} sim={r.sim} foe={r.foe}
-                    enemy={enemyUnit} unit={r.unit}
+                    enemy={enemyUnit!} unit={r.unit}
                     expanded={expanded === r.id}
                     onToggle={() => setExpanded((x) => (x === r.id ? null : r.id))}
                     onRemove={() => toggleMember(r.id)}
@@ -1905,19 +1903,5 @@ function NumRow({ label, value, onChange }: { label: string; value: number; onCh
         onChange={(e) => onChange(parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0)}
         className="w-16 rounded border border-white/10 bg-black/40 px-2 py-1 text-center font-feh text-[12px] text-warm-text outline-none focus:border-gold/50" />
     </label>
-  );
-}
-function ModRow({ children }: { children: React.ReactNode }) {
-  return <div className="flex flex-wrap gap-x-4 gap-y-1.5">{children}</div>;
-}
-function EffPicker({ value, onChange, label }: { value: string[]; onChange: (v: string[]) => void; label: string }) {
-  return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-warm-dim">
-      <span>{label} :</span>
-      {EFF.map((e) => (
-        <Check key={e} label={EFF_LABEL[e]} checked={value.includes(e)}
-          onChange={(b) => onChange(b ? [...value, e] : value.filter((x) => x !== e))} />
-      ))}
-    </div>
   );
 }
