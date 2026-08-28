@@ -7,7 +7,7 @@ import {
 } from '../lib/combat';
 import { type SolveResult, type PlanTurn } from '../lib/solver';
 import type { SolverResponse } from '../lib/solverWorker';
-import { isRefresher, detectAssist } from '../lib/battle';
+import { isRefresher, detectAssist, detectSave } from '../lib/battle';
 import type { Board, BattleUnit } from '../lib/battle';
 import type { SearchResult, SearchUnit, TeamResult } from '../lib/teamSearch';
 import { fetchTeamWeapons, fetchEnemyCombat, EMPTY_EFFECTS, type WeaponInfo, type EnemyCombat } from '../lib/simWeapons';
@@ -554,7 +554,7 @@ export function Simulator({
           // en re-planification (live), on part de l'état réel : positions/PV saisis,
           // et TOUS les ennemis sont réveillés (on est après le tour 1).
           pos: (ov?.pos || e.pos).toLowerCase(), hp: ov?.hp ?? e.hp,
-          active: live ? true : !passive, refresher: isRefresher(e.skills), assist: detectAssist(e.skills),
+          active: live ? true : !passive, refresher: isRefresher(e.skills), assist: detectAssist(e.skills), saveType: detectSave(e.skills),
         });
       });
       const allyUnits: BattleUnit[] = [];
@@ -693,7 +693,7 @@ export function Simulator({
             hero: { id: 'E' + i, name: e.name, title: '', color: r.color, weaponType: r.weaponType, moveType: r.moveType, rarity: 5, origin: '' } as Hero,
             stats: { hp: e.hp, atk: e.atk, spd: e.spd, def: e.def, res: e.res }, mods: toMods(emods[i], []),
           },
-          pos: e.pos.toLowerCase(), hp: e.hp, active: !passive, refresher: isRefresher(e.skills), assist: detectAssist(e.skills),
+          pos: e.pos.toLowerCase(), hp: e.hp, active: !passive, refresher: isRefresher(e.skills), assist: detectAssist(e.skills), saveType: detectSave(e.skills),
         };
       });
       if (pool.length < Math.min(4, wikiMap.allyPos.length || 4)) {
@@ -787,7 +787,7 @@ export function Simulator({
             hero: { id: 'E' + i, name: e.name, title: '', color: r.color, weaponType: r.weaponType, moveType: r.moveType, rarity: 5, origin: '' } as Hero,
             stats: { hp: e.hp, atk: e.atk, spd: e.spd, def: e.def, res: e.res }, mods: toMods(emods[i], []),
           },
-          pos: e.pos.toLowerCase(), hp: e.hp, active: !passive, refresher: isRefresher(e.skills), assist: detectAssist(e.skills),
+          pos: e.pos.toLowerCase(), hp: e.hp, active: !passive, refresher: isRefresher(e.skills), assist: detectAssist(e.skills), saveType: detectSave(e.skills),
         };
       });
       launchShardedSearch(pool, enemyUnits, terrain, wikiMap.allyPos, linked, {

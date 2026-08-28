@@ -18,6 +18,7 @@ export type BattleUnit = {
   charge?: number; // compteur courant de spéciale (persistant). Absent = plein (maxCd).
   refresher?: boolean; // danseuse/chanteuse : rejoue un allié
   assist?: AssistType; // assist de déplacement équipé (Repositionnement, Échange…)
+  saveType?: SaveType; // compétence Save/garde : intercepte les attaques sur un allié proche
 };
 
 // Assists de déplacement modélisés (repositionnement d'un allié adjacent).
@@ -29,6 +30,17 @@ const ASSIST_RE: [AssistType, RegExp][] = [
 ];
 export function detectAssist(skillNames: string[]): AssistType | undefined {
   for (const n of skillNames) for (const [t, re] of ASSIST_RE) if (re.test(n)) return t;
+  return undefined;
+}
+
+// Compétences « Save/garde » : l'unité intercepte les attaques contre un allié proche
+// (dans les 2 cases). 'far' = protège des attaquants À DISTANCE ; 'near' = du corps-à-corps.
+export type SaveType = 'far' | 'near';
+export function detectSave(skillNames: string[]): SaveType | undefined {
+  for (const n of skillNames) {
+    if (/far save/i.test(n)) return 'far';
+    if (/near save/i.test(n)) return 'near';
+  }
   return undefined;
 }
 
@@ -167,15 +179,18 @@ export function enemyPhase(board: Board): { board: Board; moves: EnemyMove[] } {
     // Meilleure (case, cible) d'attaque.
     let best: Option | null = null;
     const as = allies();
+    const boardSnap: Board = { units, terrain, linked: board.linked }; // pour effectiveDefender
     for (let i = 0; i < as.length; i++) {
       const a = as[i];
       for (const t of reach) {
         if (t !== e.pos && occ.has(t)) continue; // on ne s'arrête pas sur une case occupée
         if (manhattan(t, a.pos) > range) continue;
-        const sim = simulate(atTile(e, t, terrain, units), atTile(a, a.pos, terrain, units), { atk: curCharge(e), def: curCharge(a) });
+        // Garde (Save) : si un allié de la cible intercepte, c'est lui qui encaisse.
+        const def = effectiveDefender(boardSnap, a, range);
+        const sim = simulate(atTile(e, t, terrain, units), atTile(def, def.pos, terrain, units), { atk: curCharge(e), def: curCharge(def) });
         if (sim.atk.total <= 0) continue; // l'IA n'attaque pas une cible à qui elle fait 0 dégât
         const opt: Option = {
-          tile: t, target: a, dmg: sim.atk.total, kills: sim.ko,
+          tile: t, target: def, dmg: sim.atk.total, kills: sim.ko,
           selfKilled: sim.counter?.atkKo ?? false, selfDmg: sim.counter?.total ?? 0, targetIdx: i,
         };
         if (better(opt, best)) best = opt;
@@ -243,7 +258,20 @@ export function unitReach(board: Board, id: string): Set<string> {
 
 export type AttackOption = { tile: string; targetId: string; dmg: number; kills: boolean; selfKilled: boolean };
 
-// Options d'attaque de l'unité `id` : (case atteignable, ennemi à portée).
+// Défenseur EFFECTIF quand on frappe `target` : si un allié de `target` porte une garde
+// (Save) compatible avec la portée de l'attaquant et se tient dans les 2 cases, c'est LUI
+// qui encaisse (Far Save = contre le distant ≥2 ; Near Save = contre le corps-à-corps).
+export function effectiveDefender(board: Board, target: BattleUnit, attackerRange: number): BattleUnit {
+  const want: SaveType = attackerRange >= 2 ? 'far' : 'near';
+  for (const s of board.units) {
+    if (s.saveType !== want || s.side !== target.side || s.id === target.id || !alive(s)) continue;
+    if (manhattan(s.pos, target.pos) <= 2) return s; // il intercepte à la place de la cible
+  }
+  return target;
+}
+
+// Options d'attaque de l'unité `id` : (case atteignable, ennemi à portée). Tient compte des
+// gardes (Save) : frapper un ennemi protégé revient à combattre son garde.
 export function attackOptionsFor(board: Board, id: string): AttackOption[] {
   const u = board.units.find((x) => x.id === id);
   if (!u || !alive(u)) return [];
@@ -256,9 +284,10 @@ export function attackOptionsFor(board: Board, id: string): AttackOption[] {
     if (t !== u.pos && occ.has(t)) continue;
     for (const f of foes) {
       if (manhattan(t, f.pos) > range) continue;
-      const sim = simulate(atTile(u, t, board.terrain, board.units), atTile(f, f.pos, board.terrain, board.units), { atk: curCharge(u), def: curCharge(f) });
+      const def = effectiveDefender(board, f, range); // garde éventuel
+      const sim = simulate(atTile(u, t, board.terrain, board.units), atTile(def, def.pos, board.terrain, board.units), { atk: curCharge(u), def: curCharge(def) });
       if (sim.atk.total <= 0) continue; // inutile d'attaquer pour 0 dégât
-      out.push({ tile: t, targetId: f.id, dmg: sim.atk.total, kills: sim.ko, selfKilled: sim.counter?.atkKo ?? false });
+      out.push({ tile: t, targetId: def.id, dmg: sim.atk.total, kills: sim.ko, selfKilled: sim.counter?.atkKo ?? false });
     }
   }
   return out;
