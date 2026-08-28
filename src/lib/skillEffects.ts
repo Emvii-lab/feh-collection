@@ -223,10 +223,14 @@ function pSpecialScaledReduction(d: string, cd: number, out: ParsedEffects) {
 }
 
 // P6. Réduction en POURCENTAGE : « reduces damage ... by N% » (max), routée par phase.
+// Garde-fous : (1) la réduction des spéciales À EFFET DE ZONE (AoE) ne s'applique PAS au
+// combat normal (ex. Heroic Maltet « …de 80% ») → ignorée ; (2) « à hauteur de N% de la
+// Déf » est une réduction liée à une STAT (fixe), pas un % de combat → exclue (lookahead).
 function pPctReduction(d: string, out: ParsedEffects, phase: 'init' | 'defend' | 'always') {
+  if (/effet de zone|area[- ]of[- ]effect|\baoe\b/.test(d)) return;
   const m =
-    d.match(/reduces damage[^.;]*?by\s*(\d+)\s*%/) ||
-    d.match(/reduit les degats[^.;]*?de\s*(\d+)\s*%/);
+    d.match(/reduces damage[^.;]*?by\s*(\d+)\s*%(?!\s*of)/) ||
+    d.match(/reduit les degats[^.;]*?de\s*(\d+)\s*%(?!\s*de\s+l)/);
   if (!m) return;
   const n = +m[1];
   if (phase === 'init') out.reductionInit = Math.max(out.reductionInit, n);
