@@ -19,6 +19,7 @@ export type BattleUnit = {
   refresher?: boolean; // danseuse/chanteuse : rejoue un allié
   assist?: AssistType; // assist de déplacement équipé (Repositionnement, Échange…)
   saveType?: SaveType; // compétence Save/garde : intercepte les attaques sur un allié proche
+  hasIceVein?: boolean; // Veine divine (Glace) : crée des blocs de glace infranchissables
 };
 
 // Assists de déplacement modélisés (repositionnement d'un allié adjacent).
@@ -42,6 +43,31 @@ export function detectSave(skillNames: string[]): SaveType | undefined {
     if (/near save/i.test(n)) return 'near';
   }
   return undefined;
+}
+
+// Veine divine (Glace) : pose des blocs de glace infranchissables autour de l'unité après déplacement/attaque.
+export function detectDivineVeinIce(skillNames: string[]): boolean {
+  for (const n of skillNames) {
+    if (/divine vein.*ice|veine divine.*glace|ice lock|verrou.*glace|frostbite|glacial breath|nifl.*icicle|gleaming ice/i.test(n)) return true;
+  }
+  return false;
+}
+
+// Pose des blocs de glace sur les cases adjacentes (croix) libres d'obstacles permanents (murs/eau/montagne).
+export function applyDivineVeinIce(terrain: TerrainMap, centerPos: string): TerrainMap {
+  const p = parsePos(centerPos);
+  if (!p) return terrain;
+  const next = { ...terrain };
+  for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+    const nx = p.x + dx, ny = p.y + dy;
+    if (nx < 0 || nx > 5 || ny < 1 || ny > 8) continue;
+    const pos = toPos(nx, ny);
+    const cur = terrain[pos] ?? 'plain';
+    if (cur !== 'wall' && cur !== 'mountain' && cur !== 'water') {
+      next[pos] = 'ice';
+    }
+  }
+  return next;
 }
 
 // Compteur de spéciale courant d'une unité (plein par défaut).
@@ -125,7 +151,7 @@ function better(a: Option, b: Option | null): boolean {
 // Résout la phase ennemie complète. Renvoie le nouvel état + le journal des coups.
 export function enemyPhase(board: Board): { board: Board; moves: EnemyMove[] } {
   const units = board.units.map((u) => ({ ...u })); // copie mutable
-  const terrain = board.terrain;
+  let terrain = { ...board.terrain };
   const moves: EnemyMove[] = [];
   const allies = () => units.filter((u) => u.side === 'ally' && alive(u));
   const enemies = () => units.filter((u) => u.side === 'enemy' && alive(u));
@@ -171,6 +197,7 @@ export function enemyPhase(board: Board): { board: Board; moves: EnemyMove[] } {
         const heal = Math.min(healTgt.unit.stats.hp, healTgt.hp + Math.max(20, Math.round(worst * 0.5)));
         const from = e.pos; e.pos = healTile;
         const done = heal - healTgt.hp; healTgt.hp = heal;
+        if (e.hasIceVein) terrain = applyDivineVeinIce(terrain, e.pos);
         moves.push({ id: e.id, name: e.unit.hero.name, from, to: healTile, target: healTgt.id, heal: done });
         return false;
       }
@@ -204,6 +231,7 @@ export function enemyPhase(board: Board): { board: Board; moves: EnemyMove[] } {
       best.target.hp = sim.defHpAfter;
       e.charge = sim.chargeAfter.atk; best.target.charge = sim.chargeAfter.def; // jauge persistante
       if (sim.counter) e.hp = sim.counter.atkHpAfter;
+      if (e.hasIceVein) terrain = applyDivineVeinIce(terrain, e.pos);
       moves.push({
         id: e.id, name: e.unit.hero.name, from, to: best.tile, target: best.target.id,
         dmg: sim.atk.total, kills: sim.ko, selfKilled: e.hp <= 0,
@@ -218,7 +246,11 @@ export function enemyPhase(board: Board): { board: Board; moves: EnemyMove[] } {
         const d = Math.min(...as.map((a) => manhattan(t, a.pos)));
         if (d < bestD) { bestD = d; dest = t; }
       }
-      if (dest !== e.pos) { moves.push({ id: e.id, name: e.unit.hero.name, from: e.pos, to: dest }); e.pos = dest; }
+      if (dest !== e.pos) {
+        moves.push({ id: e.id, name: e.unit.hero.name, from: e.pos, to: dest });
+        e.pos = dest;
+        if (e.hasIceVein) terrain = applyDivineVeinIce(terrain, e.pos);
+      }
     }
     return false;
   };
@@ -241,7 +273,7 @@ export function enemyPhase(board: Board): { board: Board; moves: EnemyMove[] } {
     }
   }
 
-  return { board: { ...board, units }, moves };
+  return { board: { ...board, units, terrain }, moves };
 }
 
 // ---- Actions du JOUEUR (pour le solveur C3) --------------------------------
@@ -304,13 +336,22 @@ export function applyPlayerAttack(board: Board, id: string, tile: string, target
   u.charge = sim.chargeAfter.atk; f.charge = sim.chargeAfter.def; // jauge de spéciale persistante
   if (f.side === 'enemy') f.active = true; // un ennemi attaqué se réveille (le groupe suit si linked)
   if (sim.counter) u.hp = sim.counter.atkHpAfter;
-  return { ...board, units };
+  let terrain = board.terrain;
+  if (u.hasIceVein && alive(u)) {
+    terrain = applyDivineVeinIce(terrain, u.pos);
+  }
+  return { ...board, units, terrain };
 }
 
 // Applique un simple déplacement (sans attaque).
 export function applyMove(board: Board, id: string, tile: string): Board {
   const units = board.units.map((u) => (u.id === id ? { ...u, pos: tile } : { ...u }));
-  return { ...board, units };
+  const u = units.find((x) => x.id === id);
+  let terrain = board.terrain;
+  if (u?.hasIceVein && alive(u)) {
+    terrain = applyDivineVeinIce(terrain, tile);
+  }
+  return { ...board, units, terrain };
 }
 
 // ---- Assists de déplacement -------------------------------------------------------
@@ -364,10 +405,16 @@ export function applyAssist(board: Board, id: string, m: AssistMove): Board {
 
 // Empreinte d'un état (positions + PV + activation) pour la table de transposition.
 export function hashBoard(board: Board): string {
-  return board.units
+  const uHash = board.units
     .map((u) => `${u.id}@${u.pos}:${Math.max(0, u.hp)}${u.active ? 'a' : ''}c${curCharge(u)}`)
     .sort()
     .join('|');
+  const ice = Object.entries(board.terrain)
+    .filter(([_, t]) => t === 'ice')
+    .map(([p]) => p)
+    .sort()
+    .join(',');
+  return ice ? `${uHash}#ice:${ice}` : uHash;
 }
 
 // Bilan d'un tour : PV, morts de chaque côté.

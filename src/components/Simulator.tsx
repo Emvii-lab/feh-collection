@@ -7,7 +7,7 @@ import {
 } from '../lib/combat';
 import { type SolveResult, type PlanTurn } from '../lib/solver';
 import type { SolverResponse } from '../lib/solverWorker';
-import { isRefresher, detectAssist, detectSave } from '../lib/battle';
+import { isRefresher, detectAssist, detectSave, detectDivineVeinIce } from '../lib/battle';
 import type { Board, BattleUnit } from '../lib/battle';
 import type { SearchResult, SearchUnit, TeamResult } from '../lib/teamSearch';
 import { fetchTeamWeapons, fetchEnemyCombat, EMPTY_EFFECTS, type WeaponInfo, type EnemyCombat } from '../lib/simWeapons';
@@ -555,6 +555,7 @@ export function Simulator({
           // et TOUS les ennemis sont réveillés (on est après le tour 1).
           pos: (ov?.pos || e.pos).toLowerCase(), hp: ov?.hp ?? e.hp,
           active: live ? true : !passive, refresher: isRefresher(e.skills), assist: detectAssist(e.skills), saveType: detectSave(e.skills),
+          hasIceVein: detectDivineVeinIce(e.skills),
         });
       });
       const allyUnits: BattleUnit[] = [];
@@ -572,6 +573,7 @@ export function Simulator({
           unit: { hero: h, stats: s, mods: mo ?? toMods(wi.effects, wi.effAgainst) },
           pos: (ov?.pos || wikiMap.allyPos[i]).toLowerCase(), hp: ov?.hp ?? s.hp, active: true,
           assist: wi.assistName ? detectAssist([wi.assistName]) : undefined,
+          hasIceVein: wi.assistName ? detectDivineVeinIce([wi.assistName]) : false,
         });
       });
       if (!allyUnits.length) {
@@ -694,6 +696,7 @@ export function Simulator({
             stats: { hp: e.hp, atk: e.atk, spd: e.spd, def: e.def, res: e.res }, mods: toMods(emods[i], []),
           },
           pos: e.pos.toLowerCase(), hp: e.hp, active: !passive, refresher: isRefresher(e.skills), assist: detectAssist(e.skills), saveType: detectSave(e.skills),
+          hasIceVein: detectDivineVeinIce(e.skills),
         };
       });
       if (pool.length < Math.min(4, wikiMap.allyPos.length || 4)) {
@@ -788,6 +791,7 @@ export function Simulator({
             stats: { hp: e.hp, atk: e.atk, spd: e.spd, def: e.def, res: e.res }, mods: toMods(emods[i], []),
           },
           pos: e.pos.toLowerCase(), hp: e.hp, active: !passive, refresher: isRefresher(e.skills), assist: detectAssist(e.skills), saveType: detectSave(e.skills),
+          hasIceVein: detectDivineVeinIce(e.skills),
         };
       });
       launchShardedSearch(pool, enemyUnits, terrain, wikiMap.allyPos, linked, {
@@ -1412,11 +1416,12 @@ const TERRAIN_BG: Record<Terrain, string> = {
   plain: '', wall: 'bg-stone-500/70', forest: 'bg-green-800/50',
   water: 'bg-blue-700/45', trench: 'bg-amber-900/40',
   fort: 'bg-amber-300/30', defensive: 'bg-amber-300/30', mountain: 'bg-stone-600/60',
+  ice: 'bg-cyan-400/60 border border-cyan-200/80 shadow-[inset_0_0_6px_rgba(56,189,248,0.6)]',
 };
 const BRUSHES: { t: Terrain; label: string }[] = [
   { t: 'plain', label: 'Plaine' }, { t: 'wall', label: 'Mur' },
   { t: 'forest', label: 'Forêt' }, { t: 'water', label: 'Eau' },
-  { t: 'fort', label: 'Fort' },
+  { t: 'fort', label: 'Fort' }, { t: 'ice', label: '🧊 Glace' },
 ];
 
 function MapGrid({

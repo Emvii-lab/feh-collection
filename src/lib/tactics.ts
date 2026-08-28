@@ -12,7 +12,7 @@ export const toPos = (x: number, y: number) => COLS[x] + y;
 
 // Terrain d'une case (absent = plaine). fort/defensive = case de défense (passable,
 // réduit les dégâts en combat) ; mountain = comme l'eau (volants seulement).
-export type Terrain = 'plain' | 'wall' | 'forest' | 'water' | 'trench' | 'fort' | 'defensive' | 'mountain';
+export type Terrain = 'plain' | 'wall' | 'forest' | 'water' | 'trench' | 'fort' | 'defensive' | 'mountain' | 'ice';
 export type TerrainMap = Record<string, Terrain>;
 // Réduction de dégâts (%) accordée à l'unité sur la case (0 si aucune).
 export const terrainDR = (t: Terrain | undefined): number => (t === 'fort' || t === 'defensive' ? 30 : 0);
@@ -37,7 +37,7 @@ export function weaponRange(weaponType: string): number {
 
 // Coût pour ENTRER sur une case selon le terrain et le type. Infinity = infranchissable.
 function enterCost(terrain: Terrain, cls: MoveClass): number {
-  if (terrain === 'wall') return Infinity; // mur : bloque tout, volants inclus
+  if (terrain === 'wall' || terrain === 'ice') return Infinity; // mur et glace : bloquent tout, volants inclus
   if (cls === 'fly') return 1; // les volants ignorent forêt/eau/montagne/fossé
   if (terrain === 'water' || terrain === 'mountain') return Infinity; // volants seulement
   if (terrain === 'forest') return cls === 'cav' ? Infinity : 2; // cavalerie : forêt infranchissable
