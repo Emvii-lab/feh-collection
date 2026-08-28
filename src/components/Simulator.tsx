@@ -133,6 +133,7 @@ function toMods(e: EnemyCombat, effAgainst: string[]): CombatMods {
 }
 
 type EnemyState = {
+  name?: string;
   color: Color; weapon: WeaponType; move: string;
   stats: Record<StatKey, string>;
   brave: boolean; effAgainst: string[];
@@ -242,7 +243,7 @@ export function Simulator({
     setWikiSel(u.pos);
     const r = resolveEnemy(u, heroByName);
     setEnemy((e) => ({
-      ...e, color: r.color, weapon: r.weaponType, move: r.moveType,
+      ...e, name: u.name, color: r.color, weapon: r.weaponType, move: r.moveType,
       stats: {
         hp: String(r.hp), atk: String(r.atk), spd: String(r.spd),
         def: String(r.def), res: String(r.res),
@@ -956,13 +957,23 @@ export function Simulator({
                 liveEnemies={liveEnemies}
                 liveAllies={liveAllies}
                 onMoveEnemy={(i, pos) => {
+                  if (!liveOn) {
+                    initLive();
+                    setLiveOn(true);
+                  }
                   const e = (wikiMap.difficulties[wikiDiff] ?? [])[i];
                   setLiveEnemies((p) => ({ ...p, ['E' + i]: { ...(p['E' + i] ?? { pos: e?.pos.toLowerCase() ?? '', hp: e?.hp ?? 0 }), pos } }));
                 }}
                 onMoveAlly={(id, pos) => {
+                  if (!liveOn) {
+                    initLive();
+                    setLiveOn(true);
+                  }
                   const idx = team.indexOf(id);
                   const start = wikiMap.allyPos[idx]?.toLowerCase() ?? '';
-                  setLiveAllies((p) => ({ ...p, [id]: { ...(p[id] ?? { pos: start, hp: 0 }), pos } }));
+                  const h = byId.get(id);
+                  const s = h && (statsOverride.get(id) ?? resolveStats(h, stats.get(id)));
+                  setLiveAllies((p) => ({ ...p, [id]: { ...(p[id] ?? { pos: start, hp: s ? s.hp : 0 }), pos } }));
                 }}
               />
 
@@ -1015,7 +1026,7 @@ export function Simulator({
                     <button
                       type="button"
                       disabled={solving}
-                      onClick={() => runSolver()}
+                      onClick={() => runSolver(liveOn ? { enemies: liveEnemies, allies: liveAllies } : undefined)}
                       className="rounded-lg border border-fuchsia-300/40 bg-fuchsia-500/25 px-3.5 py-1.5 font-feh text-[12.5px] font-semibold text-fuchsia-100 transition hover:bg-fuchsia-500/35 disabled:opacity-60"
                     >
                       {solving ? `⏳ ${solveNodes.toLocaleString('fr')} états…` : '🧠 Résoudre la carte'}
@@ -1458,7 +1469,7 @@ function MapGrid({
 }) {
   // Pion en cours de glisser (mode live) : ennemi (index) ou allié (id du héros).
   const drag = useRef<{ kind: 'e'; idx: number } | { kind: 'a'; id: string } | null>(null);
-  const liveDrag = liveOn && (!!onMoveEnemy || !!onMoveAlly);
+  const liveDrag = (!!onMoveEnemy || !!onMoveAlly);
   const [showImage, setShowImage] = useState(true);
   // Auto-réparation : si l'URL de l'image manque (carte en cache), on la résout du titre.
   const [imgUrl, setImgUrl] = useState<string | undefined>(mapImageUrl);
@@ -1538,7 +1549,7 @@ function MapGrid({
   }
 
   return (
-    <div className="mx-auto mt-2 w-full max-w-[288px]">
+    <div className="mx-auto mt-2 w-full max-w-[320px] sm:max-w-[340px]">
       {placed.length ? (
         <div className="mb-1.5 flex flex-wrap items-center justify-center gap-1">
           <span className="text-[9.5px] text-warm-mute">Positionner :</span>
