@@ -11,6 +11,7 @@ export type WeaponInfo = {
   effects: ParsedEffects; // brave, bonus, dégâts %stat, riposte à distance, etc.
   hasBuild: boolean; // true = effets lus de ton build équipé (kit exact) ; false = arme seule
   assistName?: string; // wiki_name de l'assist équipé/natif (pour détecter Repositionnement…)
+  skillNames: string[]; // tous les wiki_name du kit (arme + passives…) pour détecter Veine divine (Glace), etc.
 };
 export const EMPTY_EFFECTS = (): ParsedEffects => parseSkillEffects([]);
 
@@ -144,8 +145,8 @@ export async function fetchTeamWeapons(
 
   // 3a) héros AVEC build → moteur d'effets sur toute la panoplie équipée.
   for (const [hid, b] of builds) {
-    const rows = BUILD_SLOTS.map((s) => b[s])
-      .filter((n): n is string => Boolean(n))
+    const equippedNames = BUILD_SLOTS.map((s) => b[s]).filter((n): n is string => Boolean(n));
+    const rows = equippedNames
       .map((n) => skillMap.get(n))
       .filter((w): w is WRow => Boolean(w));
     const weaponRow = b.weapon ? skillMap.get(b.weapon) : null;
@@ -154,6 +155,7 @@ export async function fetchTeamWeapons(
       effects: parseSkillEffects(rows as SkillRow[]),
       hasBuild: true,
       assistName: (b.assist as string | null) ?? undefined,
+      skillNames: equippedNames,
     });
   }
 
@@ -172,6 +174,7 @@ export async function fetchTeamWeapons(
         effects: parseSkillEffects(kit as SkillRow[]),
         hasBuild: false,
         assistName: assistRow?.wiki_name,
+        skillNames: kit.map((r) => r.wiki_name),
       });
     }
   }

@@ -6,7 +6,7 @@
 import {
   enemyPhase, boardSummary, alive,
   attackOptionsFor, applyPlayerAttack, applyMove, unitReach, hashBoard,
-  assistOptions, applyAssist,
+  assistOptions, applyAssist, expireIce,
   type Board, type EnemyMove,
 } from './battle';
 import { manhattan } from './tactics';
@@ -119,9 +119,12 @@ export function solve(
     if (++nodes > budget) break;
     if ((nodes & 127) === 0) { onProgress?.(nodes); if (Date.now() > deadline) { timedOut = true; break; } }
 
+    // 0) début de tour : on numérote le tour et on fait fondre la glace périmée (Veine divine ~1 tour).
+    const turnBoard = expireIce({ ...cur.board, turn: cur.depth + 1 }, cur.depth + 1);
+
     // 1) toutes les phases-joueur, notées par l'heuristique APRÈS tes coups (avant IA).
     const pps: { board: Board; moves: PlayerMove[]; hv: number }[] = [];
-    for (const pp of playerPhases(cur.board, allowDeaths, attacksPerUnit)) {
+    for (const pp of playerPhases(turnBoard, allowDeaths, attacksPerUnit)) {
       if (!allowDeaths && boardSummary(pp.board).lostUnit) continue;
       pps.push({ ...pp, hv: heuristic(pp.board) });
     }

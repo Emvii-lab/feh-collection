@@ -89,7 +89,7 @@ function PlanSteps({ turns, startTurn = 1 }: { turns: PlanTurn[]; startTurn?: nu
     </ol>
   );
 }
-const NO_WI: WeaponInfo = { effAgainst: [], effects: EMPTY_EFFECTS(), hasBuild: false };
+const NO_WI: WeaponInfo = { effAgainst: [], effects: EMPTY_EFFECTS(), hasBuild: false, skillNames: [] };
 
 // Extrait les effets auto-parsés (ParsedEffects) vers les champs de l'ennemi.
 const pickEffects = (c: EnemyCombat) => ({
@@ -525,7 +525,7 @@ export function Simulator({
           unit: { hero: h, stats: s, mods: mo ?? toMods(wi.effects, wi.effAgainst) },
           pos: (ov?.pos || wikiMap.allyPos[i]).toLowerCase(), hp: ov?.hp ?? s.hp, active: true,
           assist: wi.assistName ? detectAssist([wi.assistName]) : undefined,
-          hasIceVein: wi.assistName ? detectDivineVeinIce([wi.assistName]) : false,
+          hasIceVein: detectDivineVeinIce(wi.skillNames),
         });
       });
       if (!allyUnits.length) {

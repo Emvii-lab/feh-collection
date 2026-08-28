@@ -53,21 +53,38 @@ export function detectDivineVeinIce(skillNames: string[]): boolean {
   return false;
 }
 
-// Pose des blocs de glace sur les cases adjacentes (croix) libres d'obstacles permanents (murs/eau/montagne).
-export function applyDivineVeinIce(terrain: TerrainMap, centerPos: string): TerrainMap {
+// Pose des blocs de glace sur les cases adjacentes (croix) qui sont de la PLAINE (on ne
+// recouvre pas forêt/fort/mur/eau : ça permet de rétablir 'plain' à l'expiration sans perte).
+// Chaque case posée est horodatée (`iceTurn`) pour expirer après ~1 tour (Veine divine).
+export function applyDivineVeinIce(
+  terrain: TerrainMap, iceTurn: Record<string, number>, centerPos: string, turn: number,
+): { terrain: TerrainMap; iceTurn: Record<string, number> } {
   const p = parsePos(centerPos);
-  if (!p) return terrain;
-  const next = { ...terrain };
+  if (!p) return { terrain, iceTurn };
+  const nt = { ...terrain };
+  const ni = { ...iceTurn };
   for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
     const nx = p.x + dx, ny = p.y + dy;
     if (nx < 0 || nx > 5 || ny < 1 || ny > 8) continue;
     const pos = toPos(nx, ny);
-    const cur = terrain[pos] ?? 'plain';
-    if (cur !== 'wall' && cur !== 'mountain' && cur !== 'water') {
-      next[pos] = 'ice';
-    }
+    if ((terrain[pos] ?? 'plain') === 'plain') { nt[pos] = 'ice'; ni[pos] = turn; }
   }
-  return next;
+  return { terrain: nt, iceTurn: ni };
+}
+
+// Expire les blocs de glace de Veine divine plus vieux d'~1 tour : la case redevient 'plain'.
+// (La glace peinte à la main par la joueuse n'a pas d'horodatage → jamais expirée.)
+export function expireIce(board: Board, currentTurn: number): Board {
+  const it = board.iceTurn;
+  if (!it) return { ...board, turn: currentTurn };
+  const terrain = { ...board.terrain };
+  const iceTurn: Record<string, number> = {};
+  let changed = false;
+  for (const [pos, placed] of Object.entries(it)) {
+    if (currentTurn - placed >= 2) { if (terrain[pos] === 'ice') { terrain[pos] = 'plain'; changed = true; } }
+    else iceTurn[pos] = placed;
+  }
+  return { ...board, terrain: changed ? terrain : board.terrain, iceTurn, turn: currentTurn };
 }
 
 // Compteur de spéciale courant d'une unité (plein par défaut).
@@ -82,6 +99,8 @@ export type Board = {
   units: BattleUnit[];
   terrain: TerrainMap;
   linked: boolean; // globalai=passivelinked → un ennemi réveillé réveille tout le groupe
+  turn?: number; // tour courant (maintenu par le solveur), pour l'expiration de la glace
+  iceTurn?: Record<string, number>; // case de glace de Veine divine → tour de pose (expire ~1 tour)
 };
 
 export type EnemyMove = {
@@ -152,6 +171,8 @@ function better(a: Option, b: Option | null): boolean {
 export function enemyPhase(board: Board): { board: Board; moves: EnemyMove[] } {
   const units = board.units.map((u) => ({ ...u })); // copie mutable
   let terrain = { ...board.terrain };
+  let iceTurn = { ...(board.iceTurn ?? {}) };
+  const turn = board.turn ?? 0;
   const moves: EnemyMove[] = [];
   const allies = () => units.filter((u) => u.side === 'ally' && alive(u));
   const enemies = () => units.filter((u) => u.side === 'enemy' && alive(u));
@@ -197,7 +218,7 @@ export function enemyPhase(board: Board): { board: Board; moves: EnemyMove[] } {
         const heal = Math.min(healTgt.unit.stats.hp, healTgt.hp + Math.max(20, Math.round(worst * 0.5)));
         const from = e.pos; e.pos = healTile;
         const done = heal - healTgt.hp; healTgt.hp = heal;
-        if (e.hasIceVein) terrain = applyDivineVeinIce(terrain, e.pos);
+        if (e.hasIceVein) ({ terrain, iceTurn } = applyDivineVeinIce(terrain, iceTurn, e.pos, turn));
         moves.push({ id: e.id, name: e.unit.hero.name, from, to: healTile, target: healTgt.id, heal: done });
         return false;
       }
@@ -231,7 +252,7 @@ export function enemyPhase(board: Board): { board: Board; moves: EnemyMove[] } {
       best.target.hp = sim.defHpAfter;
       e.charge = sim.chargeAfter.atk; best.target.charge = sim.chargeAfter.def; // jauge persistante
       if (sim.counter) e.hp = sim.counter.atkHpAfter;
-      if (e.hasIceVein) terrain = applyDivineVeinIce(terrain, e.pos);
+      if (e.hasIceVein) ({ terrain, iceTurn } = applyDivineVeinIce(terrain, iceTurn, e.pos, turn));
       moves.push({
         id: e.id, name: e.unit.hero.name, from, to: best.tile, target: best.target.id,
         dmg: sim.atk.total, kills: sim.ko, selfKilled: e.hp <= 0,
@@ -249,7 +270,7 @@ export function enemyPhase(board: Board): { board: Board; moves: EnemyMove[] } {
       if (dest !== e.pos) {
         moves.push({ id: e.id, name: e.unit.hero.name, from: e.pos, to: dest });
         e.pos = dest;
-        if (e.hasIceVein) terrain = applyDivineVeinIce(terrain, e.pos);
+        if (e.hasIceVein) ({ terrain, iceTurn } = applyDivineVeinIce(terrain, iceTurn, e.pos, turn));
       }
     }
     return false;
@@ -273,7 +294,7 @@ export function enemyPhase(board: Board): { board: Board; moves: EnemyMove[] } {
     }
   }
 
-  return { board: { ...board, units, terrain }, moves };
+  return { board: { ...board, units, terrain, iceTurn }, moves };
 }
 
 // ---- Actions du JOUEUR (pour le solveur C3) --------------------------------
@@ -337,10 +358,11 @@ export function applyPlayerAttack(board: Board, id: string, tile: string, target
   if (f.side === 'enemy') f.active = true; // un ennemi attaqué se réveille (le groupe suit si linked)
   if (sim.counter) u.hp = sim.counter.atkHpAfter;
   let terrain = board.terrain;
+  let iceTurn = board.iceTurn;
   if (u.hasIceVein && alive(u)) {
-    terrain = applyDivineVeinIce(terrain, u.pos);
+    ({ terrain, iceTurn } = applyDivineVeinIce(terrain, board.iceTurn ?? {}, u.pos, board.turn ?? 0));
   }
-  return { ...board, units, terrain };
+  return { ...board, units, terrain, iceTurn };
 }
 
 // Applique un simple déplacement (sans attaque).
@@ -348,10 +370,11 @@ export function applyMove(board: Board, id: string, tile: string): Board {
   const units = board.units.map((u) => (u.id === id ? { ...u, pos: tile } : { ...u }));
   const u = units.find((x) => x.id === id);
   let terrain = board.terrain;
+  let iceTurn = board.iceTurn;
   if (u?.hasIceVein && alive(u)) {
-    terrain = applyDivineVeinIce(terrain, tile);
+    ({ terrain, iceTurn } = applyDivineVeinIce(terrain, board.iceTurn ?? {}, tile, board.turn ?? 0));
   }
-  return { ...board, units, terrain };
+  return { ...board, units, terrain, iceTurn };
 }
 
 // ---- Assists de déplacement -------------------------------------------------------
