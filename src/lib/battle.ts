@@ -57,19 +57,42 @@ export function detectDivineVeinIce(skillNames: string[]): boolean {
 // recouvre pas forêt/fort/mur/eau : ça permet de rétablir 'plain' à l'expiration sans perte).
 // Chaque case posée est horodatée (`iceTurn`) pour expirer après ~1 tour (Veine divine).
 export function applyDivineVeinIce(
-  terrain: TerrainMap, iceTurn: Record<string, number>, centerPos: string, turn: number,
-): { terrain: TerrainMap; iceTurn: Record<string, number> } {
+  terrain: TerrainMap, iceTurn: Record<string, number>, iceSide: Record<string, 'ally' | 'enemy'>,
+  centerPos: string, turn: number, side: 'ally' | 'enemy',
+): { terrain: TerrainMap; iceTurn: Record<string, number>; iceSide: Record<string, 'ally' | 'enemy'> } {
   const p = parsePos(centerPos);
-  if (!p) return { terrain, iceTurn };
+  if (!p) return { terrain, iceTurn, iceSide };
   const nt = { ...terrain };
   const ni = { ...iceTurn };
+  const ns = { ...iceSide };
   for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
     const nx = p.x + dx, ny = p.y + dy;
     if (nx < 0 || nx > 5 || ny < 1 || ny > 8) continue;
     const pos = toPos(nx, ny);
-    if ((terrain[pos] ?? 'plain') === 'plain') { nt[pos] = 'ice'; ni[pos] = turn; }
+    if ((terrain[pos] ?? 'plain') === 'plain') { nt[pos] = 'ice'; ni[pos] = turn; ns[pos] = side; }
   }
-  return { terrain: nt, iceTurn: ni };
+  return { terrain: nt, iceTurn: ni, iceSide: ns };
+}
+
+// Vue du terrain pour un camp : sa PROPRE glace de Veine divine devient franchissable
+// (une unité passe/occupe sa glace ; celle du camp adverse reste infranchissable).
+// La glace peinte à la main (sans propriétaire) ne bloque QUE le joueur (obstacle de carte).
+export function terrainForSide(
+  terrain: TerrainMap, iceSide: Record<string, 'ally' | 'enemy'> | undefined, side: 'ally' | 'enemy',
+): TerrainMap {
+  if (!iceSide) {
+    if (side === 'ally') return terrain; // le joueur voit toute glace comme un mur (comportement inchangé)
+    // l'ennemi : sans info de propriété, la glace ne le bloque pas (elle est presque toujours à lui)
+  }
+  const out: TerrainMap = { ...terrain };
+  for (const [pos, t] of Object.entries(terrain)) {
+    if (t !== 'ice') continue;
+    const owner = iceSide?.[pos];
+    // franchissable si c'est ma glace ; pour l'ennemi, la glace non-alliée (à lui ou peinte) l'est aussi.
+    const passable = owner === side || (side === 'enemy' && owner !== 'ally');
+    if (passable) out[pos] = 'plain';
+  }
+  return out;
 }
 
 // Expire les blocs de glace de Veine divine plus vieux d'~1 tour : la case redevient 'plain'.
@@ -79,12 +102,14 @@ export function expireIce(board: Board, currentTurn: number): Board {
   if (!it) return { ...board, turn: currentTurn };
   const terrain = { ...board.terrain };
   const iceTurn: Record<string, number> = {};
+  const iceSide: Record<string, 'ally' | 'enemy'> = {};
+  const prevSide = board.iceSide ?? {};
   let changed = false;
   for (const [pos, placed] of Object.entries(it)) {
     if (currentTurn - placed >= 2) { if (terrain[pos] === 'ice') { terrain[pos] = 'plain'; changed = true; } }
-    else iceTurn[pos] = placed;
+    else { iceTurn[pos] = placed; if (prevSide[pos]) iceSide[pos] = prevSide[pos]; }
   }
-  return { ...board, terrain: changed ? terrain : board.terrain, iceTurn, turn: currentTurn };
+  return { ...board, terrain: changed ? terrain : board.terrain, iceTurn, iceSide, turn: currentTurn };
 }
 
 // Compteur de spéciale courant d'une unité (plein par défaut).
@@ -101,6 +126,7 @@ export type Board = {
   linked: boolean; // globalai=passivelinked → un ennemi réveillé réveille tout le groupe
   turn?: number; // tour courant (maintenu par le solveur), pour l'expiration de la glace
   iceTurn?: Record<string, number>; // case de glace de Veine divine → tour de pose (expire ~1 tour)
+  iceSide?: Record<string, 'ally' | 'enemy'>; // qui a posé la glace : une unité franchit SA propre glace
 };
 
 export type EnemyMove = {
@@ -172,7 +198,11 @@ export function enemyPhase(board: Board): { board: Board; moves: EnemyMove[] } {
   const units = board.units.map((u) => ({ ...u })); // copie mutable
   let terrain = { ...board.terrain };
   let iceTurn = { ...(board.iceTurn ?? {}) };
+  let iceSide = { ...(board.iceSide ?? {}) };
   const turn = board.turn ?? 0;
+  // Vue de terrain pour le pathing ENNEMI : les ennemis franchissent la glace de Veine
+  // divine (posée par le boss), qui ne bloque QUE le joueur. La glace alliée les bloque.
+  const enemyView = () => terrainForSide(terrain, iceSide, 'enemy');
   const moves: EnemyMove[] = [];
   const allies = () => units.filter((u) => u.side === 'ally' && alive(u));
   const enemies = () => units.filter((u) => u.side === 'enemy' && alive(u));
@@ -183,7 +213,7 @@ export function enemyPhase(board: Board): { board: Board; moves: EnemyMove[] } {
     if (!e.active) {
       const tz = threatZone(
         e.pos, moveAllowance(e.unit.hero.moveType), moveClass(e.unit.hero.moveType),
-        weaponRange(e.unit.hero.weaponType), terrain, blockedBy(units, e),
+        weaponRange(e.unit.hero.weaponType), enemyView(), blockedBy(units, e),
       );
       if (allies().some((a) => tz.has(a.pos))) e.active = true;
     }
@@ -198,7 +228,7 @@ export function enemyPhase(board: Board): { board: Board; moves: EnemyMove[] } {
     if (!alive(e)) return false;
     const range = weaponRange(e.unit.hero.weaponType);
     const reach = allowMove
-      ? reachable(e.pos, moveAllowance(e.unit.hero.moveType), moveClass(e.unit.hero.moveType), terrain, blockedBy(units, e))
+      ? reachable(e.pos, moveAllowance(e.unit.hero.moveType), moveClass(e.unit.hero.moveType), enemyView(), blockedBy(units, e))
       : new Set([e.pos]);
     const occ = occupiedTiles(units, e);
 
@@ -218,7 +248,7 @@ export function enemyPhase(board: Board): { board: Board; moves: EnemyMove[] } {
         const heal = Math.min(healTgt.unit.stats.hp, healTgt.hp + Math.max(20, Math.round(worst * 0.5)));
         const from = e.pos; e.pos = healTile;
         const done = heal - healTgt.hp; healTgt.hp = heal;
-        if (e.hasIceVein) ({ terrain, iceTurn } = applyDivineVeinIce(terrain, iceTurn, e.pos, turn));
+        if (e.hasIceVein) ({ terrain, iceTurn, iceSide } = applyDivineVeinIce(terrain, iceTurn, iceSide, e.pos, turn, 'enemy'));
         moves.push({ id: e.id, name: e.unit.hero.name, from, to: healTile, target: healTgt.id, heal: done });
         return false;
       }
@@ -252,7 +282,7 @@ export function enemyPhase(board: Board): { board: Board; moves: EnemyMove[] } {
       best.target.hp = sim.defHpAfter;
       e.charge = sim.chargeAfter.atk; best.target.charge = sim.chargeAfter.def; // jauge persistante
       if (sim.counter) e.hp = sim.counter.atkHpAfter;
-      if (e.hasIceVein) ({ terrain, iceTurn } = applyDivineVeinIce(terrain, iceTurn, e.pos, turn));
+      if (e.hasIceVein) ({ terrain, iceTurn, iceSide } = applyDivineVeinIce(terrain, iceTurn, iceSide, e.pos, turn, 'enemy'));
       moves.push({
         id: e.id, name: e.unit.hero.name, from, to: best.tile, target: best.target.id,
         dmg: sim.atk.total, kills: sim.ko, selfKilled: e.hp <= 0,
@@ -270,7 +300,7 @@ export function enemyPhase(board: Board): { board: Board; moves: EnemyMove[] } {
       if (dest !== e.pos) {
         moves.push({ id: e.id, name: e.unit.hero.name, from: e.pos, to: dest });
         e.pos = dest;
-        if (e.hasIceVein) ({ terrain, iceTurn } = applyDivineVeinIce(terrain, iceTurn, e.pos, turn));
+        if (e.hasIceVein) ({ terrain, iceTurn, iceSide } = applyDivineVeinIce(terrain, iceTurn, iceSide, e.pos, turn, 'enemy'));
       }
     }
     return false;
@@ -294,7 +324,7 @@ export function enemyPhase(board: Board): { board: Board; moves: EnemyMove[] } {
     }
   }
 
-  return { board: { ...board, units, terrain, iceTurn }, moves };
+  return { board: { ...board, units, terrain, iceTurn, iceSide }, moves };
 }
 
 // ---- Actions du JOUEUR (pour le solveur C3) --------------------------------
@@ -359,10 +389,11 @@ export function applyPlayerAttack(board: Board, id: string, tile: string, target
   if (sim.counter) u.hp = sim.counter.atkHpAfter;
   let terrain = board.terrain;
   let iceTurn = board.iceTurn;
+  let iceSide = board.iceSide;
   if (u.hasIceVein && alive(u)) {
-    ({ terrain, iceTurn } = applyDivineVeinIce(terrain, board.iceTurn ?? {}, u.pos, board.turn ?? 0));
+    ({ terrain, iceTurn, iceSide } = applyDivineVeinIce(terrain, board.iceTurn ?? {}, board.iceSide ?? {}, u.pos, board.turn ?? 0, 'ally'));
   }
-  return { ...board, units, terrain, iceTurn };
+  return { ...board, units, terrain, iceTurn, iceSide };
 }
 
 // Applique un simple déplacement (sans attaque).
@@ -371,10 +402,11 @@ export function applyMove(board: Board, id: string, tile: string): Board {
   const u = units.find((x) => x.id === id);
   let terrain = board.terrain;
   let iceTurn = board.iceTurn;
+  let iceSide = board.iceSide;
   if (u?.hasIceVein && alive(u)) {
-    ({ terrain, iceTurn } = applyDivineVeinIce(terrain, board.iceTurn ?? {}, tile, board.turn ?? 0));
+    ({ terrain, iceTurn, iceSide } = applyDivineVeinIce(terrain, board.iceTurn ?? {}, board.iceSide ?? {}, tile, board.turn ?? 0, 'ally'));
   }
-  return { ...board, units, terrain, iceTurn };
+  return { ...board, units, terrain, iceTurn, iceSide };
 }
 
 // ---- Assists de déplacement -------------------------------------------------------
