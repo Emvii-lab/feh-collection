@@ -1797,8 +1797,11 @@ function MapGrid({
             const isReach = reachSet.has(pos) && !isAttack;
             const isThreat = threatSet.has(pos);
             const terr = terrain[pos] ?? 'plain';
+            // La glace (Veine divine) est un obstacle DYNAMIQUE absent de l'image de fond →
+            // on l'affiche toujours (contrairement aux murs/forêt déjà peints sur l'image).
+            const isIce = terr === 'ice';
             const terrBg = bg
-              ? 'bg-transparent' // l'image montre déjà le terrain
+              ? 'bg-transparent' // l'image montre déjà le terrain (sauf la glace, gérée à part)
               : TERRAIN_BG[terr] || (isAlly ? 'bg-sky-500/10' : 'bg-black/25');
             const overlay = isAttack ? 'bg-amber-400/45' : isReach ? 'bg-sky-500/30' : '';
             return (
@@ -1811,6 +1814,11 @@ function MapGrid({
                 } ${terrBg} ${isThreat ? 'shadow-[inset_0_0_0_2px_rgba(248,113,113,0.55)]' : ''} ${liveDrag ? 'ring-1 ring-inset ring-sky-400/20' : ''}`}
               >
                 {overlay ? <span className={`pointer-events-none absolute inset-0 rounded-[3px] ${overlay}`} /> : null}
+                {isIce ? (
+                  <span className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-[3px] bg-cyan-400/45 ring-1 ring-inset ring-cyan-100/80 shadow-[inset_0_0_6px_rgba(56,189,248,0.7)] text-[11px] leading-none">
+                    🧊
+                  </span>
+                ) : null}
                 {en ? (
                   <button
                     type="button"
@@ -1875,9 +1883,10 @@ function MapGrid({
         <span><span className="inline-block h-2 w-2 rounded-[1px] bg-green-800/60 align-middle" /> forêt</span>
         <span><span className="inline-block h-2 w-2 rounded-[1px] bg-blue-700/60 align-middle" /> eau</span>
         <span><span className="inline-block h-2 w-2 rounded-[1px] bg-amber-300/50 align-middle" /> fort (−30%)</span>
+        <span><span className="inline-block h-2 w-2 rounded-[1px] bg-cyan-400/60 align-middle" /> 🧊 glace (bloc)</span>
       </div>
       <p className="mt-0.5 text-center text-[9px] text-warm-mute/70">
-        Terrain pré-rempli (lu de l'image) + murs du wiki ; corrige au pinceau. Fort/forêt passables (fort ≠ blocage, il réduit les dégâts). Sans IA : repère, pas une garantie.
+        Terrain pré-rempli (lu de l'image) + murs du wiki ; corrige au pinceau. Fort/forêt passables (fort ≠ blocage, il réduit les dégâts). Pour les blocs de glace du boss (Veine divine), peins-les avec 🧊 aux cases où tu les vois en jeu. Sans IA : repère, pas une garantie.
       </p>
     </div>
   );
