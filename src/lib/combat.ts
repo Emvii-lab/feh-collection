@@ -68,6 +68,8 @@ export type CombatMods = {
   miracle?: boolean; // Miracle universel : survit à 1 PV si PV > 1
   targetResNonMagic?: boolean; // Faux de Hel: calcule les dégâts sur la Rés si adversaire != magie/bâton
   postCombatHeal?: number; // Soin après combat (ex: 7 PV)
+  inflictNoCounterAoE: number; // après attaque : coupe-riposte à la cible + alliés à N cases (géré par battle.ts)
+  targetLowerDefRes: boolean; // vs adversaire à portée 2 : dégâts sur la plus basse de Déf/Rés
 };
 
 export const NO_MODS: CombatMods = {
@@ -81,6 +83,7 @@ export const NO_MODS: CombatMods = {
   fieldBuff: { atk: 0, spd: 0, def: 0, res: 0, range: 0 },
   special: { maxCd: 0, kind: 'none' }, vantage: false,
   miracleNonMagic: false, miracle: false, targetResNonMagic: false, postCombatHeal: 0,
+  inflictNoCounterAoE: 0, targetLowerDefRes: false,
 };
 
 export type Unit = { hero: Hero; stats: Stats; mods: CombatMods };
@@ -135,6 +138,10 @@ function strikeDamage(
   const isDefMagic = def.hero.weaponType === 'Tome' || def.hero.weaponType === 'Staff';
   const useRes = targetsRes(atk.hero.weaponType) || (Boolean(atk.mods.targetResNonMagic) && !isDefMagic);
   let mit = Math.max(0, useRes ? effStat(def, atk, 'res') : effStat(def, atk, 'def'));
+  // Frostbite Breath (Nifl) : contre un adversaire À PORTÉE 2, on tape sur la plus basse de Déf/Rés.
+  if (atk.mods.targetLowerDefRes && isRanged(def.hero.weaponType)) {
+    mit = Math.max(0, Math.min(effStat(def, atk, 'def'), effStat(def, atk, 'res')));
+  }
   if (offense?.defIgnorePct) mit = mit - Math.trunc(mit * offense.defIgnorePct / 100);
   let dmg = Math.max(0, a - mit);
   dmg += atk.mods.bonusDamage || 0; // dégâts fixes (ex. « = compteur × N »)

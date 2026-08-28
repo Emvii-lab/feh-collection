@@ -138,6 +138,7 @@ function toMods(e: EnemyCombat, effAgainst: string[]): CombatMods {
     fieldBuff: e.fieldBuff, special: e.special,
     miracleNonMagic: e.miracleNonMagic, miracle: e.miracle,
     targetResNonMagic: e.targetResNonMagic, postCombatHeal: e.postCombatHeal,
+    inflictNoCounterAoE: e.inflictNoCounterAoE, targetLowerDefRes: e.targetLowerDefRes,
   };
 }
 

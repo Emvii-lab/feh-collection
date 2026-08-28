@@ -47,6 +47,12 @@ export type ParsedEffects = {
   miracle: boolean; // Miracle universel : survit avec 1 PV si PV > 1
   targetResNonMagic: boolean; // Hel: calcule les dégâts sur la Rés si adversaire != magie/bâton
   postCombatHeal: number; // PV soignés après combat (ex: 7 PV)
+  // Après avoir attaqué, le porteur inflige « coupe-riposte » à la cible ET aux alliés de la
+  // cible dans N cases jusqu'à leur prochaine action (ex. Frostbite Breath de Nifl) : ces
+  // unités ne ripostent plus pendant le reste de la phase → un tank comme Hector encaisse 0.
+  inflictNoCounterAoE: number; // rayon (0 = aucun)
+  // Contre un adversaire à PORTÉE 2, les dégâts sont calculés sur la plus BASSE de Déf/Rés.
+  targetLowerDefRes: boolean;
 };
 
 // Spéciale équipée : compteur + effet au déclenchement (offensive ou défensive).
@@ -72,6 +78,7 @@ const EMPTY = (): ParsedEffects => ({
   fieldBuff: { atk: 0, spd: 0, def: 0, res: 0, range: 0 },
   special: { maxCd: 0, kind: 'none' },
   miracleNonMagic: false, miracle: false, targetResNonMagic: false, postCombatHeal: 0,
+  inflictNoCounterAoE: 0, targetLowerDefRes: false,
 });
 
 // Enlève le HTML + les parenthèses d'EXEMPLE (qui contiennent des nombres illustratifs
@@ -279,6 +286,15 @@ function pFlags(d: string, out: ParsedEffects, phase: 'init' | 'defend' | 'alway
   if (healM) {
     out.postCombatHeal = Math.max(out.postCombatHeal, +(healM[1] || healM[2]));
   }
+  // « coupe-riposte » infligé en zone après attaque (cible + alliés à N cases) — ex. Frostbite
+  // Breath. Distinct de preventFoeCounter (qui vaut pour le combat du porteur lui-même).
+  const ncM = d.match(/preventing counter-?attacks?[^.;]*?within (\d+) spaces?|emp[eê]ch(?:e|ant)[^.;]*?(?:contre-attaque|riposte)[^.;]*?(\d+) case/i);
+  if (ncM) out.inflictNoCounterAoE = Math.max(out.inflictNoCounterAoE, +(ncM[1] || ncM[2]));
+  else if (/(?:inflicts?|status)[^.;]*?preventing counter-?attacks?|inflige[^.;]*?(?:statut|malus)[^.;]*?coupe-riposte/i.test(d))
+    out.inflictNoCounterAoE = Math.max(out.inflictNoCounterAoE, 1);
+  // Dégâts calculés sur la plus basse de Déf/Rés (gaté sur la portée 2 côté combat).
+  if (/calculates? damage using (?:the )?lower of foe'?s? def(?:ense)?\s*(?:or|\/)\s*res(?:istance)?|d[ée]g[âa]ts[^.;]*?calcul[ée]s? avec la (?:d[ée]f(?:ense)?|r[ée]s(?:istance)?)[^.;]*?la plus (?:basse|faible)/i.test(d))
+    out.targetLowerDefRes = true;
 }
 
 // Compteur MAX de spéciale (base) = cooldown de la spéciale équipée (pour les formules).

@@ -203,6 +203,15 @@ export function enemyPhase(board: Board): { board: Board; moves: EnemyMove[] } {
   // Vue de terrain pour le pathing ENNEMI : les ennemis franchissent la glace de Veine
   // divine (posée par le boss), qui ne bloque QUE le joueur. La glace alliée les bloque.
   const enemyView = () => terrainForSide(terrain, iceSide, 'enemy');
+  // Alliés (joueur) frappés d'un « coupe-riposte » de zone ce tour (ex. Frostbite Breath de
+  // Nifl) : ils ne ripostent plus aux attaques ennemies suivantes → un tank encaisse 0.
+  const noCounter = new Set<string>();
+  // Unité attaquante prête au combat ; si la cible est sous coupe-riposte, elle ne riposte pas.
+  const attacker = (e: BattleUnit, tile: string, defId: string): Unit => {
+    const u = atTile(e, tile, terrain, units);
+    if (noCounter.has(defId)) u.mods = { ...u.mods, preventFoeCounter: true };
+    return u;
+  };
   const moves: EnemyMove[] = [];
   const allies = () => units.filter((u) => u.side === 'ally' && alive(u));
   const enemies = () => units.filter((u) => u.side === 'enemy' && alive(u));
@@ -265,7 +274,7 @@ export function enemyPhase(board: Board): { board: Board; moves: EnemyMove[] } {
         if (manhattan(t, a.pos) > range) continue;
         // Garde (Save) : si un allié de la cible intercepte, c'est lui qui encaisse.
         const def = effectiveDefender(boardSnap, a, range);
-        const sim = simulate(atTile(e, t, terrain, units), atTile(def, def.pos, terrain, units), { atk: curCharge(e), def: curCharge(def) });
+        const sim = simulate(attacker(e, t, def.id), atTile(def, def.pos, terrain, units), { atk: curCharge(e), def: curCharge(def) });
         if (sim.atk.total <= 0) continue; // l'IA n'attaque pas une cible à qui elle fait 0 dégât
         const opt: Option = {
           tile: t, target: def, dmg: sim.atk.total, kills: sim.ko,
@@ -276,12 +285,16 @@ export function enemyPhase(board: Board): { board: Board; moves: EnemyMove[] } {
     }
 
     if (best) {
-      const sim = simulate(atTile(e, best.tile, terrain, units), atTile(best.target, best.target.pos, terrain, units), { atk: curCharge(e), def: curCharge(best.target) });
+      const sim = simulate(attacker(e, best.tile, best.target.id), atTile(best.target, best.target.pos, terrain, units), { atk: curCharge(e), def: curCharge(best.target) });
       const from = e.pos;
       e.pos = best.tile;
       best.target.hp = sim.defHpAfter;
       e.charge = sim.chargeAfter.atk; best.target.charge = sim.chargeAfter.def; // jauge persistante
       if (sim.counter) e.hp = sim.counter.atkHpAfter;
+      // Coupe-riposte de zone (Frostbite Breath) : après cette attaque, la cible ET ses alliés
+      // à N cases ne ripostent plus aux attaques ennemies suivantes de la phase.
+      const aoe = e.unit.mods.inflictNoCounterAoE || 0;
+      if (aoe > 0) for (const a of allies()) if (manhattan(a.pos, best.target.pos) <= aoe) noCounter.add(a.id);
       if (e.hasIceVein) ({ terrain, iceTurn, iceSide } = applyDivineVeinIce(terrain, iceTurn, iceSide, e.pos, turn, 'enemy'));
       moves.push({
         id: e.id, name: e.unit.hero.name, from, to: best.tile, target: best.target.id,
