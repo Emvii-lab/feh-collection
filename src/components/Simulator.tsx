@@ -24,6 +24,14 @@ import {
 import { MAP_TERRAIN } from '../data/mapTerrain';
 import { fetchBuilds } from '../lib/builds';
 import { fetchAllHeroStats } from '../lib/heroStats';
+import {
+  searchWikiMaps, fetchSavedMaps, upsertSavedMap, renameSavedMap, deleteSavedMap,
+  type MapSuggestion, type SavedMap,
+} from '../lib/mapCatalog';
+
+// Normalise pour une recherche insensible aux accents/casse (côté catalogue local).
+const norm = (s: string) =>
+  s.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 
 // Persistance légère (équipe + carte ennemie) entre les ouvertures / rechargements.
 const load = <T,>(key: string, fallback: T): T => {
@@ -190,8 +198,12 @@ export function Simulator({
     return m === 'manual' || m === 'hero' ? m : 'wiki';
   });
   const [enemyHeroId, setEnemyHeroId] = useState(() => load<string>('feh.sim.enemyHeroId', ''));
-  // Chargement d'une carte depuis le wiki FEH (mémorisé pour réafficher la grille).
-  const [wikiUrl, setWikiUrl] = useState(() => load<string>('feh.sim.wikiUrl', ''));
+  // Chargement d'une carte : recherche par NOM (wiki + catalogue) au lieu d'un lien à coller.
+  const [mapQuery, setMapQuery] = useState('');
+  const [mapSug, setMapSug] = useState<MapSuggestion[]>([]); // suggestions wiki (en direct)
+  const [savedMaps, setSavedMaps] = useState<SavedMap[]>([]); // catalogue réutilisable (Supabase)
+  const [mapSearching, setMapSearching] = useState(false);
+  const [mapFocused, setMapFocused] = useState(false);
   const [wikiMap, setWikiMap] = useState<WikiMap | null>(() => load<WikiMap | null>('feh.sim.wikiMap', null));
   // Auto-réparation : une carte en cache d'avant l'ajout de `globalai` (ou du terrain)
   // manque des champs → on la re-télécharge pour retrouver le bon comportement d'IA.
@@ -219,14 +231,34 @@ export function Simulator({
     return (name: string) => bySlug.get(slug(name));
   }, [heroes]);
 
-  const loadWiki = async () => {
-    setWikiLoading(true); setWikiError(null);
+  // Applique une carte chargée à l'état du simulateur (grille + difficulté + pertes).
+  const applyMap = (map: WikiMap) => {
+    setWikiMap(map);
+    const diffs = Object.keys(map.difficulties);
+    setWikiDiff(diffs[diffs.length - 1] ?? ''); // par défaut la difficulté la plus élevée
+    setSolveDeaths(!map.mustSurvive); // Rout → pertes autorisées ; survie/défense → non
+  };
+
+  // Rafraîchit le catalogue Supabase dans l'état local.
+  const refreshSaved = () => { fetchSavedMaps().then(setSavedMaps).catch(() => {}); };
+
+  // Charge une carte par titre de page wiki (recherche ou lien collé), puis l'ajoute au catalogue.
+  const loadFromTitle = async (title: string, category = '') => {
+    const t = parsePageTitle(title);
+    if (!t.trim()) return;
+    setWikiLoading(true); setWikiError(null); setMapFocused(false);
     try {
-      const map = await fetchWikiMap(parsePageTitle(wikiUrl));
-      setWikiMap(map);
-      const diffs = Object.keys(map.difficulties);
-      setWikiDiff(diffs[diffs.length - 1] ?? ''); // par défaut la difficulté la plus élevée
-      setSolveDeaths(!map.mustSurvive); // Rout → pertes autorisées ; survie/défense → non
+      const map = await fetchWikiMap(t);
+      applyMap(map);
+      setMapQuery(''); setMapSug([]);
+      // mémorise (sans écraser un nom FR déjà personnalisé).
+      const existing = savedMaps.find((s) => s.page_title === map.title);
+      upsertSavedMap({
+        page_title: map.title,
+        name: existing?.name ?? map.title,
+        category: existing?.category || category,
+        data: map,
+      }).then(refreshSaved).catch(() => {});
     } catch (e) {
       setWikiMap(null);
       setWikiError(e instanceof Error ? e.message : 'Échec du chargement');
@@ -234,6 +266,51 @@ export function Simulator({
       setWikiLoading(false);
     }
   };
+
+  // Charge une carte du catalogue : instantané depuis le cache, puis rafraîchi en fond.
+  const loadSaved = (sm: SavedMap) => {
+    setMapFocused(false); setMapQuery('');
+    if (sm.data) applyMap(sm.data);
+    setWikiLoading(!sm.data); setWikiError(null);
+    fetchWikiMap(sm.page_title)
+      .then((map) => {
+        applyMap(map);
+        upsertSavedMap({ page_title: map.title, name: sm.name, category: sm.category, data: map })
+          .then(refreshSaved).catch(() => {});
+      })
+      .catch(() => { if (!sm.data) setWikiError('Wiki injoignable — carte non mise en cache.'); })
+      .finally(() => setWikiLoading(false));
+  };
+
+  const renameSaved = async (sm: SavedMap) => {
+    const n = window.prompt('Nom de la carte :', sm.name);
+    if (n && n.trim() && n.trim() !== sm.name) { await renameSavedMap(sm.page_title, n.trim()); refreshSaved(); }
+  };
+  const removeSaved = async (sm: SavedMap) => {
+    if (window.confirm(`Retirer « ${sm.name} » du catalogue ?`)) { await deleteSavedMap(sm.page_title); refreshSaved(); }
+  };
+
+  // Catalogue au montage.
+  useEffect(() => { refreshSaved(); }, []);
+
+  // Recherche wiki en direct (anti-rebond), sauf si l'entrée ressemble à un lien collé.
+  useEffect(() => {
+    const q = mapQuery.trim();
+    if (q.length < 2 || /\/wiki\/|https?:/i.test(q)) { setMapSug([]); setMapSearching(false); return; }
+    setMapSearching(true);
+    const h = setTimeout(() => {
+      searchWikiMaps(q).then((r) => setMapSug(r)).catch(() => setMapSug([])).finally(() => setMapSearching(false));
+    }, 280);
+    return () => clearTimeout(h);
+  }, [mapQuery]);
+
+  // Suggestions affichées : d'abord le catalogue local (noms FR), puis les nouveautés du wiki.
+  const mapQ = norm(mapQuery);
+  const localMatches = mapQ.length >= 1
+    ? savedMaps.filter((s) => norm(s.name).includes(mapQ) || norm(s.page_title).includes(mapQ)).slice(0, 6)
+    : [];
+  const savedTitles = new Set(savedMaps.map((s) => s.page_title));
+  const wikiMatches = mapSug.filter((s) => !savedTitles.has(s.title)).slice(0, 8);
 
   const pickWikiEnemy = async (u: WikiEnemy) => {
     setWikiSel(u.pos);
@@ -306,7 +383,6 @@ export function Simulator({
   useEffect(() => save('feh.sim.enemy', enemy), [enemy]);
   useEffect(() => save('feh.sim.enMode', enMode), [enMode]);
   useEffect(() => save('feh.sim.enemyHeroId', enemyHeroId), [enemyHeroId]);
-  useEffect(() => save('feh.sim.wikiUrl', wikiUrl), [wikiUrl]);
   useEffect(() => save('feh.sim.wikiMap', wikiMap), [wikiMap]);
   useEffect(() => save('feh.sim.wikiDiff', wikiDiff), [wikiDiff]);
   useEffect(() => save('feh.sim.wikiSel', wikiSel), [wikiSel]);
@@ -834,29 +910,108 @@ export function Simulator({
           </div>
         ) : null}
 
-        {/* Mode Wiki (URL input) */}
+        {/* Mode Wiki : recherche par NOM (catalogue FR + wiki) — plus besoin de coller un lien */}
         {enMode === 'wiki' ? (
           <div className="mb-3 rounded-xl border border-sky-400/20 bg-sky-950/20 p-2.5">
-            <div className="flex gap-2">
+            <div className="relative">
               <input
-                value={wikiUrl}
-                onChange={(e) => setWikiUrl(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && loadWiki()}
-                placeholder="Colle l'URL du wiki (page « … (map) »)…"
-                className="min-w-0 flex-1 rounded border border-white/10 bg-black/40 px-2.5 py-1.5 text-[12px] text-warm-text outline-none focus:border-gold/50"
+                value={mapQuery}
+                onChange={(e) => setMapQuery(e.target.value)}
+                onFocus={() => setMapFocused(true)}
+                onBlur={() => setTimeout(() => setMapFocused(false), 150)}
+                onKeyDown={(e) => {
+                  if (e.key !== 'Enter') return;
+                  if (localMatches.length) loadSaved(localMatches[0]);
+                  else if (wikiMatches.length) loadFromTitle(wikiMatches[0].title, wikiMatches[0].category);
+                  else loadFromTitle(mapQuery);
+                }}
+                placeholder="Cherche une carte par son nom (ex. « Avènement céleste »)…"
+                className="w-full rounded border border-white/10 bg-black/40 px-2.5 py-1.5 pr-7 text-[12px] text-warm-text outline-none focus:border-gold/50"
               />
-              <button
-                type="button"
-                onClick={loadWiki}
-                disabled={wikiLoading || !wikiUrl.trim()}
-                className="shrink-0 rounded border border-gold-deep/40 bg-black/30 px-3.5 py-1.5 font-feh text-[12px] font-semibold text-gold-text transition hover:border-gold/60 disabled:opacity-50"
-              >
-                {wikiLoading ? '…' : 'Charger'}
-              </button>
+              {(wikiLoading || mapSearching) ? (
+                <span className="absolute right-2.5 top-1.5 text-[12px] text-warm-mute">…</span>
+              ) : null}
+
+              {/* Dropdown de suggestions */}
+              {mapFocused && mapQuery.trim().length >= 2 ? (
+                <div className="absolute z-20 mt-1 max-h-72 w-full overflow-auto rounded-lg border border-white/10 bg-[#1a1614] shadow-xl">
+                  {localMatches.map((s) => (
+                    <button
+                      key={'l' + s.page_title}
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => loadSaved(s)}
+                      className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[12px] text-warm-text hover:bg-white/5"
+                    >
+                      <span className="text-gold/80">💾</span>
+                      <span className="flex-1 truncate">{s.name}</span>
+                      {s.category ? <span className="shrink-0 text-[10px] text-warm-mute">{s.category}</span> : null}
+                    </button>
+                  ))}
+                  {wikiMatches.map((s) => (
+                    <button
+                      key={'w' + s.title}
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => loadFromTitle(s.title, s.category)}
+                      className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[12px] text-warm-dim hover:bg-white/5"
+                    >
+                      <span className="text-sky-300/70">🔍</span>
+                      <span className="flex-1 truncate">{s.title}</span>
+                      {s.category ? <span className="shrink-0 text-[10px] text-warm-mute">{s.category}</span> : null}
+                    </button>
+                  ))}
+                  {!localMatches.length && !wikiMatches.length ? (
+                    <div className="px-2.5 py-2 text-[11px] text-warm-mute">
+                      {mapSearching ? 'Recherche…' : 'Aucune carte trouvée. Tu peux coller un lien du wiki puis Entrée.'}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
-            {wikiError ? (
-              <p className="mt-1.5 text-[11px] text-amber-300/85">{wikiError}</p>
+
+            {/* Catalogue : cartes déjà utilisées (plus récentes d'abord) */}
+            {savedMaps.length > 0 && !mapQuery.trim() ? (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {savedMaps.slice(0, 16).map((s) => (
+                  <span
+                    key={s.page_title}
+                    className="group inline-flex items-center gap-1 rounded-full border border-white/10 bg-black/30 py-0.5 pl-2.5 pr-1 text-[11px] text-warm-dim"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => loadSaved(s)}
+                      title={s.page_title}
+                      className="max-w-[170px] truncate hover:text-gold-text"
+                    >
+                      {s.name}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => renameSaved(s)}
+                      title="Renommer"
+                      className="px-0.5 text-warm-mute opacity-0 transition group-hover:opacity-100 hover:text-gold-text"
+                    >
+                      ✎
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeSaved(s)}
+                      title="Retirer du catalogue"
+                      className="px-0.5 text-warm-mute opacity-0 transition group-hover:opacity-100 hover:text-red-300"
+                    >
+                      ✕
+                    </button>
+                  </span>
+                ))}
+              </div>
             ) : null}
+
+            <p className="mt-1.5 text-[10.5px] text-warm-mute">
+              Tape le nom (en français si la carte est déjà enregistrée), ou colle un lien du wiki puis Entrée.
+              Chaque carte chargée est ajoutée au catalogue et réutilisable par tout le monde.
+            </p>
+            {wikiError ? <p className="mt-1 text-[11px] text-amber-300/85">{wikiError}</p> : null}
           </div>
         ) : null}
 

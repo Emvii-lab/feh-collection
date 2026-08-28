@@ -119,6 +119,22 @@ drop policy if exists "collection_all" on feh.collection;
 create policy "collection_all" on feh.collection
   for all using (true) with check (true);
 
+-- 5) Catalogue de cartes du simulateur (partagé)
+--    Chaque carte chargée depuis le wiki est mémorisée ici : on évite de
+--    recoller un lien, et on pioche dans une liste (nom FR éditable). La clé
+--    est le titre EXACT de la page wiki → pas de doublon possible.
+create table if not exists feh.sim_map (
+  page_title text primary key,            -- titre exact de la page wiki (dédoublonnage)
+  name       text not null,               -- nom affiché (FR, éditable)
+  category   text not null default '',    -- regroupement libre (best-effort)
+  data       jsonb,                        -- WikiMap parsé (cache)
+  updated_at timestamptz not null default now()
+);
+alter table feh.sim_map enable row level security;
+drop policy if exists "sim_map_all" on feh.sim_map;
+create policy "sim_map_all" on feh.sim_map
+  for all using (true) with check (true);
+
 -- ============================================================
 --  EXPOSER LE SCHÉMA "feh" À L'API (à faire UNE fois, self-hosted)
 -- ------------------------------------------------------------
