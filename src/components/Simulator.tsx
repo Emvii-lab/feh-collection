@@ -819,7 +819,7 @@ export function Simulator({
       onClick={onClose}
     >
       <div
-        className="relative my-auto w-full max-w-5xl xl:max-w-7xl rounded-2xl border border-gold/30 bg-[#33291a] p-4 md:p-6 font-feh shadow-[0_20px_60px_-15px_rgba(0,0,0,0.8)]"
+        className="relative my-auto w-[98vw] max-w-7xl rounded-2xl border border-gold/30 bg-[#33291a] p-4 md:p-6 font-feh shadow-[0_20px_60px_-15px_rgba(0,0,0,0.8)]"
         onClick={(e) => e.stopPropagation()}
       >
         <button
@@ -920,9 +920,9 @@ export function Simulator({
 
         {/* ===== VUE 2 COLONNES (CÔTE À CÔTE) LORSQU'UNE CARTE EST CHARGÉE ===== */}
         {enMode === 'wiki' && wikiMap ? (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+          <div className="flex flex-col md:flex-row gap-5 items-start">
             {/* COLONNE GAUCHE (ÉCRAN 1) : CARTE INTERACTIVE, DRAG & DROP, PINCEAUX */}
-            <div className="lg:col-span-5 xl:col-span-5 rounded-xl border border-red-400/25 bg-red-950/20 p-3 lg:sticky lg:top-2">
+            <div className="w-full md:w-[350px] lg:w-[390px] xl:w-[420px] shrink-0 rounded-xl border border-red-400/25 bg-red-950/20 p-3 md:sticky md:top-2">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-1.5">
                 <span className="font-feh text-[12.5px] font-semibold text-red-200/90">
                   🗺️ Plateau & Déplacements
@@ -1018,7 +1018,7 @@ export function Simulator({
             </div>
 
             {/* COLONNE DROITE (ÉCRAN 2) : SOLVEUR, PLAN ÉTAPE PAR ÉTAPE, RE-PLANIFICATION, RECHERCHE D'ÉQUIPE */}
-            <div className="lg:col-span-7 xl:col-span-7 space-y-3">
+            <div className="flex-1 min-w-0 space-y-3">
               {/* ===== Solveur de carte (C3/C4) ===== */}
               <div className="rounded-xl border border-fuchsia-400/30 bg-fuchsia-500/[0.06] p-3">
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-fuchsia-400/20 pb-2">
