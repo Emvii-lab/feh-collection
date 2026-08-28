@@ -80,6 +80,23 @@ const STAT_TOK = '(?:Atk|Spd|Def|Res|HP)';
 const deslashName = (n: string) =>
   n.replace(new RegExp(`\\b(${STAT_TOK})/(${STAT_TOK})`, 'g'), '$1$2');
 
+// ---- Versions « BOSS » des armes PRF, absentes de feh.skills ----
+// Sur les cartes, les boss portent une arme BOOSTÉE, mais le wiki liste le nom de BASE
+// (ex. « Frostbite Breath »). Ces effets « en plus » (lus des descriptions en jeu) sont
+// fusionnés par-dessus le kit parsé. Table EXTENSIBLE : une entrée par arme de boss.
+const BOSS_WEAPON_BOOST: Record<string, (e: EnemyCombat) => void> = {
+  // Nifl — « What is a Heart? » (Livre X, ch.4). Frostbite Breath version boss :
+  // -10 Atq/Vit/Déf/Rés au foe EN PLUS du -5 de base (= -15), +20 dégâts (dont vrais),
+  // réduit les dégâts subis de 15, et Congélation ≈ le boss double / l'adversaire non.
+  'Frostbite Breath': (e) => {
+    e.foeAtk += 10; e.foeSpd += 10; e.foeDef += 10; e.foeRes += 10;
+    e.bonusDamage += 20;
+    e.flatDmgReduction = Math.max(e.flatDmgReduction, 15);
+    e.guaranteedFollowup = true; // Congélation : le boss réalise sa double frappe
+    e.cannotBeDoubled = true;    // Congélation : l'adversaire ne double pas le boss
+  },
+};
+
 // Combine les effets de toutes les compétences d'un ennemi (noms anglais du wiki).
 export async function fetchEnemyCombat(skillNames: string[]): Promise<EnemyCombat> {
   const base = skillNames.filter(Boolean);
@@ -89,7 +106,10 @@ export async function fetchEnemyCombat(skillNames: string[]): Promise<EnemyComba
     .from('skills')
     .select('description, scategory, cooldown')
     .in('wiki_name', names);
-  return parseSkillEffects((data ?? []) as SkillRow[]);
+  const eff = parseSkillEffects((data ?? []) as SkillRow[]);
+  // Fusionne la version boss de l'arme, le cas échéant (Nifl…).
+  for (const n of base) BOSS_WEAPON_BOOST[n]?.(eff);
+  return eff;
 }
 
 type WRow = {
