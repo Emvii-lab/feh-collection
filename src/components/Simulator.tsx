@@ -28,10 +28,31 @@ import {
   searchWikiMaps, fetchSavedMaps, upsertSavedMap, renameSavedMap, deleteSavedMap,
   type MapSuggestion, type SavedMap,
 } from '../lib/mapCatalog';
+import { logFeedback } from '../lib/simFeedback';
 
 // Normalise pour une recherche insensible aux accents/casse (côté catalogue local).
 const norm = (s: string) =>
   s.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+
+// Prédiction du moteur pour l'état au DÉBUT du tour `targetTurn`, reconstituée depuis le
+// journal du plan (position + K.O. des ennemis, pertes alliées). `planStart` = tour où le
+// plan commence (1 en initial, liveTurn en re-planification).
+function predictedAtTurn(plan: PlanTurn[], foes: WikiEnemy[], planStart: number, targetTurn: number) {
+  const enemyPos = new Map<string, string>();
+  const enemyDead = new Set<string>();
+  const allyDead = new Set<string>();
+  foes.forEach((e, i) => enemyPos.set('E' + i, e.pos.toLowerCase()));
+  const nbTurns = Math.max(0, targetTurn - planStart); // tours joués AVANT le tour cible
+  for (let t = 0; t < nbTurns && t < plan.length; t++) {
+    for (const m of plan[t].player) if (m.kills && m.targetId) enemyDead.add(m.targetId);
+    for (const m of plan[t].enemy) {
+      enemyPos.set(m.id, m.to);
+      if (m.kills && m.target) allyDead.add(m.target);
+      if (m.selfKilled) enemyDead.add(m.id);
+    }
+  }
+  return { enemyPos, enemyDead, allyDead };
+}
 
 // Persistance légère (équipe + carte ennemie) entre les ouvertures / rechargements.
 const load = <T,>(key: string, fallback: T): T => {
@@ -495,6 +516,7 @@ export function Simulator({
   const [liveAllies, setLiveAllies] = useState<Record<string, LiveOv>>({});
   const [liveTurn, setLiveTurn] = useState(2); // tour où l'on repart (le tour 1 est déjà joué)
   const [planStartTurn, setPlanStartTurn] = useState(1); // décalage d'affichage du dernier plan
+  const [fbMsg, setFbMsg] = useState(''); // confirmation d'envoi du retour (écart / échec)
   // (Ré)initialise l'état live depuis les positions/PV de départ de la carte.
   const initLive = () => {
     if (!wikiMap) return;
@@ -511,6 +533,55 @@ export function Simulator({
     });
     setLiveEnemies(en);
     setLiveAllies(al);
+    setFbMsg('');
+  };
+
+  // Écart RÉEL vs PRÉVU au tour courant : compare l'état saisi au plan du moteur.
+  const liveDiff = useMemo(() => {
+    if (!liveOn || !solveRes?.turns?.length || !wikiMap) return null;
+    const foes = wikiMap.difficulties[wikiDiff] ?? [];
+    const pred = predictedAtTurn(solveRes.turns, foes, planStartTurn, liveTurn);
+    const rows: string[] = [];
+    const payload: { enemies: unknown[]; allies: unknown[] } = { enemies: [], allies: [] };
+    foes.forEach((e, i) => {
+      const id = 'E' + i;
+      const nm = e.name.split(':')[0];
+      const ov = liveEnemies[id];
+      const predDead = pred.enemyDead.has(id);
+      const liveDead = !!ov?.dead;
+      if (predDead !== liveDead) {
+        rows.push(`${nm} : prévu ${predDead ? 'K.O.' : 'vivant'}, réel ${liveDead ? 'K.O.' : 'vivant'}`);
+        payload.enemies.push({ id, name: nm, predDead, liveDead });
+      } else if (!liveDead) {
+        const predPos = pred.enemyPos.get(id);
+        const livePos = (ov?.pos || e.pos).toLowerCase();
+        if (predPos && livePos && predPos !== livePos) {
+          rows.push(`${nm} : prévu en ${predPos.toUpperCase()}, réel en ${livePos.toUpperCase()}`);
+          payload.enemies.push({ id, name: nm, predPos, livePos });
+        }
+      }
+    });
+    team.forEach((hid, i) => {
+      if (i >= wikiMap.allyPos.length) return;
+      const h = byId.get(hid);
+      if (!h) return;
+      const predDead = pred.allyDead.has(hid);
+      const liveDead = !!liveAllies[hid]?.dead;
+      if (predDead !== liveDead) {
+        rows.push(`${h.name} : prévu ${predDead ? 'mort' : 'en vie'}, réel ${liveDead ? 'mort' : 'en vie'}`);
+        payload.allies.push({ id: hid, name: h.name, predDead, liveDead });
+      }
+    });
+    return { rows, payload };
+  }, [liveOn, solveRes, wikiMap, wikiDiff, planStartTurn, liveTurn, liveEnemies, liveAllies, team, byId]);
+
+  // Enregistre un retour (écart ou échec) dans feh.sim_feedback.
+  const sendFeedback = async (kind: 'divergence' | 'plan_failed', payload: unknown, note?: string) => {
+    if (!wikiMap) return;
+    const err = await logFeedback({ map: wikiMap.title, difficulty: wikiDiff, turn: liveTurn, kind, payload, note });
+    setFbMsg(err ? 'Échec de l’envoi : ' + err : kind === 'plan_failed'
+      ? 'Merci, l’échec du plan est enregistré. Ça aide à corriger le moteur.'
+      : 'Merci, l’écart est enregistré.');
   };
 
   const stopSearchWorkers = () => {
@@ -1308,7 +1379,7 @@ export function Simulator({
                       <button
                         type="button"
                         disabled={solving}
-                        onClick={() => runSolver({ enemies: liveEnemies, allies: liveAllies })}
+                        onClick={() => { if (liveDiff?.rows.length) sendFeedback('divergence', liveDiff.payload); runSolver({ enemies: liveEnemies, allies: liveAllies }); }}
                         className="ml-auto rounded-lg border border-sky-300/50 bg-sky-500/25 px-3 py-1 font-feh text-[12px] font-semibold text-sky-100 transition hover:bg-sky-500/35 disabled:opacity-50"
                       >
                         🔄 Re-calculer le plan
@@ -1348,6 +1419,34 @@ export function Simulator({
                           );
                         })}
                       </div>
+                    </div>
+
+                    {/* Écart réel vs prévu + retour au moteur */}
+                    {liveDiff && liveDiff.rows.length > 0 ? (
+                      <div className="mt-2 rounded-lg border border-amber-400/30 bg-amber-500/[0.07] p-2">
+                        <p className="mb-1 font-feh text-[10.5px] font-semibold text-amber-200/90">
+                          ⚠️ Réel vs prévu (tour {liveTurn}) — le moteur s'est trompé sur :
+                        </p>
+                        <ul className="space-y-0.5 text-[10.5px] text-amber-100/85">
+                          {liveDiff.rows.map((r, i) => <li key={i}>• {r}</li>)}
+                        </ul>
+                        <p className="mt-1 text-[9.5px] text-warm-mute">
+                          « Re-calculer le plan » envoie automatiquement cet écart pour améliorer le moteur.
+                        </p>
+                      </div>
+                    ) : liveDiff ? (
+                      <p className="mt-2 text-[10px] text-emerald-300/80">✓ Conforme au plan jusqu'ici.</p>
+                    ) : null}
+
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => sendFeedback('plan_failed', { enemies: liveEnemies, allies: liveAllies, reason: solveRes?.reason ?? '' }, 'Le plan n’a pas résolu la carte (persos morts).')}
+                        className="rounded-lg border border-red-400/40 bg-red-500/15 px-3 py-1 font-feh text-[11.5px] font-semibold text-red-200 transition hover:bg-red-500/25"
+                      >
+                        ✗ Le plan a échoué (mes persos sont morts)
+                      </button>
+                      {fbMsg ? <span className="text-[10.5px] text-emerald-300/85">{fbMsg}</span> : null}
                     </div>
                   </div>
                 ) : null}

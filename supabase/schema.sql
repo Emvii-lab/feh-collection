@@ -135,6 +135,24 @@ drop policy if exists "sim_map_all" on feh.sim_map;
 create policy "sim_map_all" on feh.sim_map
   for all using (true) with check (true);
 
+-- 6) Retour d'expérience du simulateur : écarts réel/prévu + plans échoués
+--    Alimente les corrections du moteur avec les données des cartes réellement
+--    jouées (aucune donnée sensible : carte + positions/PV).
+create table if not exists feh.sim_feedback (
+  id         bigint generated always as identity primary key,
+  created_at timestamptz not null default now(),
+  map        text not null,             -- page_title de la carte
+  difficulty text default '',
+  turn       int,                        -- tour concerné
+  kind       text not null,             -- 'divergence' | 'plan_failed'
+  payload    jsonb,                      -- diff détaillé / état réel
+  note       text
+);
+alter table feh.sim_feedback enable row level security;
+drop policy if exists "sim_feedback_all" on feh.sim_feedback;
+create policy "sim_feedback_all" on feh.sim_feedback
+  for all using (true) with check (true);
+
 -- ============================================================
 --  EXPOSER LE SCHÉMA "feh" À L'API (à faire UNE fois, self-hosted)
 -- ------------------------------------------------------------
