@@ -7,8 +7,8 @@ import {
 } from '../lib/combat';
 import { type SolveResult, type PlanTurn } from '../lib/solver';
 import type { SolverResponse } from '../lib/solverWorker';
-import { isRefresher, detectAssist, detectSave, detectDivineVeinIce } from '../lib/battle';
-import type { Board, BattleUnit } from '../lib/battle';
+import { isRefresher, detectAssist, detectSave, detectDivineVeinIce, allyDanger } from '../lib/battle';
+import type { Board, BattleUnit, DangerInfo } from '../lib/battle';
 import type { SearchResult, SearchUnit, TeamResult } from '../lib/teamSearch';
 import { fetchTeamWeapons, fetchEnemyCombat, EMPTY_EFFECTS, type WeaponInfo, type EnemyCombat } from '../lib/simWeapons';
 import type { SpecialInfo } from '../lib/skillEffects';
@@ -494,6 +494,17 @@ export function Simulator({
   const [statsOverride, setStatsOverride] = useState<Map<string, Stats>>(new Map());
   const [modsOverride, setModsOverride] = useState<Map<string, CombatMods>>(new Map());
 
+  // Effets de combat des ennemis de la carte (pour la vue « danger »), chargés une fois.
+  const [enemyCombats, setEnemyCombats] = useState<EnemyCombat[]>([]);
+  useEffect(() => {
+    if (!wikiMap) { setEnemyCombats([]); return; }
+    const foes = wikiMap.difficulties[wikiDiff] ?? [];
+    let active = true;
+    Promise.all(foes.map((e) => fetchEnemyCombat(e.skills)))
+      .then((m) => { if (active) setEnemyCombats(m); })
+      .catch(() => { if (active) setEnemyCombats([]); });
+    return () => { active = false; };
+  }, [wikiMap, wikiDiff]);
 
 
   // ===== Solveur de carte : construit le plateau, cherche une ligne gagnante (Web Worker).
@@ -583,6 +594,54 @@ export function Simulator({
       ? 'Merci, l’échec du plan est enregistré. Ça aide à corriger le moteur.'
       : 'Merci, l’écart est enregistré.');
   };
+
+  // Construit le plateau (ennemis + tes persos AUX POSITIONS COURANTES) pour la vue danger.
+  const buildDangerBoard = (): Board | null => {
+    if (!wikiMap) return null;
+    const foes = wikiMap.difficulties[wikiDiff] ?? [];
+    if (!foes.length || enemyCombats.length !== foes.length) return null; // mods pas prêts
+    const edits = load<TerrainMap>('feh.sim.terrain.' + wikiMap.title, {});
+    const terrain = { ...(MAP_TERRAIN[wikiMap.title] ?? {}), ...wikiMap.terrain, ...edits };
+    const units: BattleUnit[] = [];
+    foes.forEach((e, i) => {
+      const ov = liveOn ? liveEnemies['E' + i] : undefined;
+      if (ov?.dead) return;
+      const r = resolveEnemy(e, heroByName);
+      units.push({
+        id: 'E' + i, side: 'enemy',
+        unit: {
+          hero: { id: 'E' + i, name: e.name, title: '', color: r.color, weaponType: r.weaponType, moveType: r.moveType, rarity: 5, origin: '' } as Hero,
+          stats: { hp: e.hp, atk: e.atk, spd: e.spd, def: e.def, res: e.res },
+          mods: toMods(enemyCombats[i], []),
+        },
+        pos: (ov?.pos || e.pos).toLowerCase(), hp: ov?.hp ?? e.hp, active: true,
+        saveType: detectSave(e.skills), hasIceVein: detectDivineVeinIce(e.skills),
+      });
+    });
+    team.forEach((id, i) => {
+      if (i >= wikiMap.allyPos.length) return;
+      const h = byId.get(id);
+      const s = h && (statsOverride.get(id) ?? resolveStats(h, stats.get(id)));
+      if (!h || !s) return;
+      const ov = liveOn ? liveAllies[id] : undefined;
+      if (ov?.dead) return;
+      const wi = weaponInfo.get(id) ?? NO_WI;
+      const mo = modsOverride.get(id);
+      units.push({
+        id, side: 'ally',
+        unit: { hero: h, stats: s, mods: mo ?? toMods(wi.effects, wi.effAgainst) },
+        pos: (ov?.pos || wikiMap.allyPos[i]).toLowerCase(), hp: ov?.hp ?? s.hp, active: true,
+      });
+    });
+    return { units, terrain, linked: false };
+  };
+
+  // Danger « pire cas » par allié (indépendant des déplacements ennemis).
+  const danger = useMemo<Record<string, DangerInfo>>(() => {
+    const b = buildDangerBoard();
+    return b ? allyDanger(b) : {};
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wikiMap, wikiDiff, enemyCombats, team, liveOn, liveEnemies, liveAllies, weaponInfo, statsOverride, stats, modsOverride, byId]);
 
   const stopSearchWorkers = () => {
     searchWorkersRef.current.forEach((w) => w.terminate());
@@ -1203,6 +1262,7 @@ export function Simulator({
                 liveOn={liveOn}
                 liveEnemies={liveEnemies}
                 liveAllies={liveAllies}
+                danger={danger}
                 onMoveEnemy={(i, pos) => {
                   if (!liveOn) {
                     initLive();
@@ -1703,7 +1763,7 @@ const BRUSHES: { t: Terrain; label: string }[] = [
 
 function MapGrid({
   enemies, allyPos, team, selectedPos, heroByName, onPick, wikiTerrain, mapKey, mapImageUrl,
-  liveOn = false, liveEnemies = {}, liveAllies = {}, onMoveEnemy, onMoveAlly,
+  liveOn = false, liveEnemies = {}, liveAllies = {}, danger = {}, onMoveEnemy, onMoveAlly,
 }: {
   enemies: WikiEnemy[];
   allyPos: string[];
@@ -1717,6 +1777,7 @@ function MapGrid({
   liveOn?: boolean;
   liveEnemies?: Record<string, LiveOv>;
   liveAllies?: Record<string, LiveOv>;
+  danger?: Record<string, DangerInfo>;
   onMoveEnemy?: (idx: number, pos: string) => void;
   onMoveAlly?: (id: string, pos: string) => void;
 }) {
@@ -1751,6 +1812,7 @@ function MapGrid({
 
   const [selAlly, setSelAlly] = useState<number | null>(null);
   const [showThreat, setShowThreat] = useState(true);
+  const [showDanger, setShowDanger] = useState(true);
   const [brush, setBrush] = useState<Terrain | null>(null); // pinceau terrain actif
   // Terrain édité à la main (persisté par carte), fusionné par-dessus le wiki.
   const tKey = 'feh.sim.terrain.' + mapKey;
@@ -1825,6 +1887,10 @@ function MapGrid({
             <input type="checkbox" checked={showThreat} onChange={(e) => setShowThreat(e.target.checked)} className="h-3 w-3 accent-red-400" />
             menace
           </label>
+          <label className="flex items-center gap-1 text-[9.5px] text-warm-mute">
+            <input type="checkbox" checked={showDanger} onChange={(e) => setShowDanger(e.target.checked)} className="h-3 w-3 accent-rose-500" />
+            danger ☠️
+          </label>
         </div>
       ) : null}
       {/* Pinceau terrain (le wiki ne donne que les murs → peins forêt/eau à la main). */}
@@ -1891,6 +1957,7 @@ function MapGrid({
             const al = allyAt.get(pos); // allié réellement sur cette case (départ ou live)
             const isAlly = isStart || !!al;
             const ally = al?.hero; // ton perso posé sur cette case
+            const dg = showDanger && ally ? danger[ally.id] : undefined; // danger « pire cas »
             const hero = en ? heroByName(en.name) : undefined;
             const isAttack = attackSet.has(pos);
             const isReach = reachSet.has(pos) && !isAttack;
@@ -1955,6 +2022,19 @@ function MapGrid({
                         {shortLabel(ally.name)}
                       </span>
                     )}
+                    {dg && dg.attackers > 0 ? (
+                      <>
+                        {dg.dies ? (
+                          <span className="pointer-events-none absolute inset-0 rounded-[3px] ring-2 ring-inset ring-rose-500/90" />
+                        ) : null}
+                        <span
+                          className={`pointer-events-none absolute -right-0.5 -top-0.5 z-10 rounded px-0.5 text-[7.5px] font-bold leading-tight ${dg.dies ? 'bg-rose-600 text-white' : 'bg-amber-500/90 text-black'}`}
+                          title={`Pire cas : subit jusqu'à ${dg.dmg} (${dg.attackers} ennemi(s) peuvent l'atteindre)`}
+                        >
+                          {dg.dies ? '☠' : ''}{dg.dmg}
+                        </span>
+                      </>
+                    ) : null}
                   </span>
                 ) : isAlly ? (
                   <span className="absolute inset-0 flex items-center justify-center text-[9px] text-sky-300/70">▲</span>
@@ -1983,9 +2063,10 @@ function MapGrid({
         <span><span className="inline-block h-2 w-2 rounded-[1px] bg-blue-700/60 align-middle" /> eau</span>
         <span><span className="inline-block h-2 w-2 rounded-[1px] bg-amber-300/50 align-middle" /> fort (−30%)</span>
         <span><span className="inline-block h-2 w-2 rounded-[1px] bg-cyan-400/60 align-middle" /> 🧊 glace (bloc)</span>
+        <span><span className="inline-block rounded bg-rose-600 px-0.5 text-[7px] font-bold text-white align-middle">☠N</span> danger : dégâts pire cas (rouge = meurt)</span>
       </div>
       <p className="mt-0.5 text-center text-[9px] text-warm-mute/70">
-        Terrain pré-rempli (lu de l'image) + murs du wiki ; corrige au pinceau. Fort/forêt passables (fort ≠ blocage, il réduit les dégâts). Pour les blocs de glace du boss (Veine divine), peins-les avec 🧊 aux cases où tu les vois en jeu. Sans IA : repère, pas une garantie.
+        Terrain pré-rempli (lu de l'image) + murs du wiki ; corrige au pinceau. Fort/forêt passables (fort ≠ blocage, il réduit les dégâts). Pour les blocs de glace du boss (Veine divine), peins-les avec 🧊 aux cases où tu les vois en jeu. <strong>Danger ☠️</strong> = pire cas si tous les ennemis qui peuvent t'atteindre te ciblent (glisse un perso pour tester une position). Sans IA de déplacement : repère fiable, pas une garantie de qui l'IA vise.
       </p>
     </div>
   );

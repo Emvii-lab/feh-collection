@@ -352,6 +352,39 @@ export function unitReach(board: Board, id: string): Set<string> {
   );
 }
 
+// ---- Vue « DANGER » (indépendante des déplacements ennemis) ----------------
+// Pour chaque allié à SA position, on ne devine PAS où l'IA ira ; on calcule le PIRE cas :
+// « si tous les ennemis qui peuvent m'atteindre me ciblaient, combien j'encaisse ? » et
+// « est-ce que ça me tue ? ». Utilise TOUT le modèle de combat (skills, malus, spéciale…).
+export type DangerInfo = { dmg: number; dies: boolean; attackers: number };
+export function allyDanger(board: Board): Record<string, DangerInfo> {
+  const out: Record<string, DangerInfo> = {};
+  const units = board.units;
+  const terrain = board.terrain;
+  const enemyView = terrainForSide(terrain, board.iceSide, 'enemy');
+  const enemies = units.filter((u) => u.side === 'enemy' && alive(u));
+  for (const a of units) {
+    if (a.side !== 'ally' || !alive(a)) continue;
+    let total = 0, attackers = 0;
+    for (const e of enemies) {
+      const range = weaponRange(e.unit.hero.weaponType);
+      const reach = reachable(
+        e.pos, moveAllowance(e.unit.hero.moveType), moveClass(e.unit.hero.moveType),
+        enemyView, blockedBy(units, e),
+      );
+      let best = 0;
+      for (const t of reach) {
+        if (manhattan(t, a.pos) > range) continue;
+        const sim = simulate(atTile(e, t, terrain, units), atTile(a, a.pos, terrain, units), { atk: curCharge(e), def: curCharge(a) });
+        if (sim.atk.total > best) best = sim.atk.total;
+      }
+      if (best > 0) { total += best; attackers++; }
+    }
+    out[a.id] = { dmg: total, dies: total >= a.hp, attackers };
+  }
+  return out;
+}
+
 export type AttackOption = { tile: string; targetId: string; dmg: number; kills: boolean; selfKilled: boolean };
 
 // Défenseur EFFECTIF quand on frappe `target` : si un allié de `target` porte une garde
