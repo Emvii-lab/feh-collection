@@ -64,6 +64,10 @@ export type CombatMods = {
   fieldBuff: { atk: number; spd: number; def: number; res: number; range: number };
   special: SpecialInfo; // spéciale équipée (jauge simulée)
   vantage: boolean; // en défense : frappe en premier
+  miracleNonMagic?: boolean; // Faux de Hel: survit à 1 PV contre les non-magiciens si PV > 1
+  miracle?: boolean; // Miracle universel : survit à 1 PV si PV > 1
+  targetResNonMagic?: boolean; // Faux de Hel: calcule les dégâts sur la Rés si adversaire != magie/bâton
+  postCombatHeal?: number; // Soin après combat (ex: 7 PV)
 };
 
 export const NO_MODS: CombatMods = {
@@ -76,6 +80,7 @@ export const NO_MODS: CombatMods = {
   foeAtk: 0, foeSpd: 0, foeDef: 0, foeRes: 0,
   fieldBuff: { atk: 0, spd: 0, def: 0, res: 0, range: 0 },
   special: { maxCd: 0, kind: 'none' }, vantage: false,
+  miracleNonMagic: false, miracle: false, targetResNonMagic: false, postCombatHeal: 0,
 };
 
 export type Unit = { hero: Hero; stats: Stats; mods: CombatMods };
@@ -127,7 +132,8 @@ function strikeDamage(
   a = adv === 1 ? a + mod : adv === -1 ? a - mod : a;
   const effective = isEffective(atk, def);
   if (effective) a = Math.trunc(a * 1.5);
-  const useRes = targetsRes(atk.hero.weaponType);
+  const isDefMagic = def.hero.weaponType === 'Tome' || def.hero.weaponType === 'Staff';
+  const useRes = targetsRes(atk.hero.weaponType) || (Boolean(atk.mods.targetResNonMagic) && !isDefMagic);
   let mit = Math.max(0, useRes ? effStat(def, atk, 'res') : effStat(def, atk, 'def'));
   if (offense?.defIgnorePct) mit = mit - Math.trunc(mit * offense.defIgnorePct / 100);
   let dmg = Math.max(0, a - mit);
@@ -208,6 +214,7 @@ type Fighter = {
   dmgTotal: number;
   hitCount: number;
   first: StrikeMeta | null;
+  miracleUsed?: boolean; // survit 1 fois par combat
 };
 function mkFighter(u: Unit, startCharge?: number): Fighter {
   const s = u.mods.special && u.mods.special.kind !== 'none' && u.mods.special.maxCd > 0
@@ -232,7 +239,22 @@ function doStrike(S: Fighter, R: Fighter) {
       defReduce = R.spec.reducePct || 0; defFired = true; R.charge = R.spec.maxCd;
     }
     const res = strikeDamage(S.u, R.u, offense, defReduce);
-    R.hp -= res.dmg;
+    
+    // Miracle check:
+    // 1) Faux de Hel : survit à 1 PV si attaquant != magie/bâton et PV > 1 au moment du coup
+    // 2) Miracle universel : survit à 1 PV si PV > 1
+    const isAtkMagic = S.u.hero.weaponType === 'Tome' || S.u.hero.weaponType === 'Staff';
+    const hasMiracleNonMagic = Boolean(R.u.mods.miracleNonMagic) && !isAtkMagic;
+    const hasMiracle = Boolean(R.u.mods.miracle) || (R.spec?.kind === 'defense' && R.spec.reducePct === 0 && R.charge === 0);
+
+    if (res.dmg >= R.hp && R.hp > 1 && (hasMiracleNonMagic || hasMiracle) && !R.miracleUsed) {
+      R.hp = 1;
+      R.miracleUsed = true;
+      if (hasMiracle && R.spec) R.charge = R.spec.maxCd;
+    } else {
+      R.hp -= res.dmg;
+    }
+
     S.dmgTotal += res.dmg; S.hitCount++;
     if (!S.first) S.first = res;
     // Charge : +1 pour S qui frappe, +1 pour R qui est touché (sauf si déclenchée à l'instant).
@@ -278,6 +300,14 @@ export function simulate(rawAttacker: Unit, rawDefender: Unit, start?: StartChar
     ? [[D, A], [A, D], ...(aDouble ? [[A, D] as [Fighter, Fighter]] : []), ...(dDouble ? [[D, A] as [Fighter, Fighter]] : [])]
     : [[A, D], ...(canCtr ? [[D, A] as [Fighter, Fighter]] : []), ...(aDouble ? [[A, D] as [Fighter, Fighter]] : []), ...(dDouble ? [[D, A] as [Fighter, Fighter]] : [])];
   for (const [S, R] of seq) if (S.hp > 0 && R.hp > 0) doStrike(S, R);
+
+  // Soin après combat (ex: Faux de Hel rend 7 PV à l'unité après combat si vivante)
+  if (A.hp > 0 && A.u.mods.postCombatHeal) {
+    A.hp = Math.min(A.u.stats.hp, A.hp + A.u.mods.postCombatHeal);
+  }
+  if (D.hp > 0 && D.u.mods.postCombatHeal) {
+    D.hp = Math.min(D.u.stats.hp, D.hp + D.u.mods.postCombatHeal);
+  }
 
   const toHit = (f: Fighter): HitResult => ({
     dmg: f.hitCount ? Math.round(f.dmgTotal / f.hitCount) : 0,

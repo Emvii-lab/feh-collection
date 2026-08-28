@@ -107,6 +107,10 @@ const pickEffects = (c: EnemyCombat) => ({
   pierceFoeReduction: c.pierceFoeReduction,
   foeAtk: c.foeAtk, foeSpd: c.foeSpd, foeDef: c.foeDef, foeRes: c.foeRes,
   special: c.special,
+  miracleNonMagic: c.miracleNonMagic,
+  miracle: c.miracle,
+  targetResNonMagic: c.targetResNonMagic,
+  postCombatHeal: c.postCombatHeal,
 });
 const ZERO_EFFECTS = pickEffects(EMPTY_EFFECTS());
 
@@ -129,6 +133,8 @@ function toMods(e: EnemyCombat, effAgainst: string[]): CombatMods {
     flatDmgReduction: e.flatDmgReduction,
     foeAtk: e.foeAtk, foeSpd: e.foeSpd, foeDef: e.foeDef, foeRes: e.foeRes,
     fieldBuff: e.fieldBuff, special: e.special,
+    miracleNonMagic: e.miracleNonMagic, miracle: e.miracle,
+    targetResNonMagic: e.targetResNonMagic, postCombatHeal: e.postCombatHeal,
   };
 }
 
@@ -145,6 +151,10 @@ type EnemyState = {
   neutralizeFoeBonuses: boolean; pierceFoeReduction: boolean; noFollowup: boolean;
   guaranteedFollowup: boolean; cannotBeDoubled: boolean; vantage: boolean;
   special: SpecialInfo; // spéciale de l'ennemi (jauge simulée)
+  miracleNonMagic?: boolean;
+  miracle?: boolean;
+  targetResNonMagic?: boolean;
+  postCombatHeal?: number;
   autoNote?: string; // récap des effets auto-appliqués depuis les skills du wiki
 };
 type UnitMods = { atkBuff: number; guaranteedFollowup: boolean; dmgReductionPct: number };
@@ -281,6 +291,10 @@ export function Simulator({
       c.neutralizeFoeBonuses ? 'annule tes bonus' : '',
       c.pierceFoeReduction ? 'perce ta réduction' : '',
       c.cannotBeDoubled ? 'empêche ton doublon' : '',
+      c.miracleNonMagic ? 'Miracle si non-magie (survit à 1 PV)' : '',
+      c.miracle ? 'Miracle (survit à 1 PV)' : '',
+      c.targetResNonMagic ? 'Cible la Résistance' : '',
+      c.postCombatHeal ? `+${c.postCombatHeal} PV après combat` : '',
       specNote,
       c.brave ? 'Brave' : '', c.guaranteedFollowup ? 'double garanti' : '',
     ].filter(Boolean);

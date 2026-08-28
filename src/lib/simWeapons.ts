@@ -83,7 +83,7 @@ const deslashName = (n: string) =>
 export async function fetchEnemyCombat(skillNames: string[]): Promise<EnemyCombat> {
   const base = skillNames.filter(Boolean);
   if (!supabase || base.length === 0) return parseSkillEffects([]);
-  const names = [...new Set(base.flatMap((n) => [n, deslashName(n)]))];
+  const names = [...new Set(base.flatMap((n) => [n, deslashName(n), n + ' (Refined)', n + ' (+Eff)', n + ' (Eff)']))];
   const { data } = await supabase
     .from('skills')
     .select('description, scategory, cooldown')

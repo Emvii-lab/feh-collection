@@ -42,6 +42,11 @@ export type ParsedEffects = {
   // Bonus de ZONE accordés aux alliés proches (Aubaine/Hone, Fortification, Poussée…).
   fieldBuff: { atk: number; spd: number; def: number; res: number; range: number };
   special: SpecialInfo; // spéciale équipée (jauge simulée coup par coup)
+  // Effets spéciaux d'armes (Faux de Hel, Miracle, etc.)
+  miracleNonMagic: boolean; // Hel: survit avec 1 PV si attaquant != magie/bâton et PV > 1
+  miracle: boolean; // Miracle universel : survit avec 1 PV si PV > 1
+  targetResNonMagic: boolean; // Hel: calcule les dégâts sur la Rés si adversaire != magie/bâton
+  postCombatHeal: number; // PV soignés après combat (ex: 7 PV)
 };
 
 // Spéciale équipée : compteur + effet au déclenchement (offensive ou défensive).
@@ -66,6 +71,7 @@ const EMPTY = (): ParsedEffects => ({
   foeAtk: 0, foeSpd: 0, foeDef: 0, foeRes: 0,
   fieldBuff: { atk: 0, spd: 0, def: 0, res: 0, range: 0 },
   special: { maxCd: 0, kind: 'none' },
+  miracleNonMagic: false, miracle: false, targetResNonMagic: false, postCombatHeal: 0,
 });
 
 // Enlève le HTML + les parenthèses d'EXEMPLE (qui contiennent des nombres illustratifs
@@ -259,6 +265,20 @@ function pFlags(d: string, out: ParsedEffects, phase: 'init' | 'defend' | 'alway
     out.cannotBeDoubled = true;
   if (/unit cannot[^.;]*?follow-up|ne peut pas (?:effectuer|faire)[^.;]*?riposte suivie/.test(d))
     out.noFollowup = true;
+  // Miracle contre les non-magiciens (Faux de Hel, etc.)
+  if (/does not use magic or staff[^.;]*?survives[^.;]*?1 hp|n'?utilise pas la magie ou un b[aâ]ton[^.;]*?survit[^.;]*?1 pv/i.test(d))
+    out.miracleNonMagic = true;
+  // Miracle inconditionnel
+  if (/(?:unit'?s? hp > 1[^.;]*?)?survives (?:a lethal blow|with 1 hp|a fatal hit)|(?:pv[^.;]*?> 1[^.;]*?)?survit [aà] un coup mortel avec 1 pv/i.test(d))
+    out.miracle = true;
+  // Calcul des dégâts sur la Résistance contre les non-magiciens
+  if (/does not use magic or staff[^.;]*?calculates damage using foe'?s? res|n'?utilise pas la magie ou un b[aâ]ton[^.;]*?d[ée]g[âa]ts sont calcul[ée]s avec sa r[ée]s/i.test(d))
+    out.targetResNonMagic = true;
+  // Soin après combat (ex: rend 7 PV à l'unité après le combat)
+  const healM = d.match(/restores (\d+) hp to unit after combat|rend (\d+) pv [aà] l'?unit[ée] apr[eè]s le combat/i);
+  if (healM) {
+    out.postCombatHeal = Math.max(out.postCombatHeal, +(healM[1] || healM[2]));
+  }
 }
 
 // Compteur MAX de spéciale (base) = cooldown de la spéciale équipée (pour les formules).
