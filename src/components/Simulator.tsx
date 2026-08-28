@@ -204,6 +204,18 @@ export function Simulator({
   const [savedMaps, setSavedMaps] = useState<SavedMap[]>([]); // catalogue réutilisable (Supabase)
   const [mapSearching, setMapSearching] = useState(false);
   const [mapFocused, setMapFocused] = useState(false);
+  // Cartes marquées « résolues » : PAR UTILISATEUR (localStorage, propre à ce navigateur),
+  // pas dans Supabase — une carte résolue pour l'une peut ne pas l'être pour l'autre.
+  const [solvedMaps, setSolvedMaps] = useState<Set<string>>(
+    () => new Set(load<string[]>('feh.sim.solvedMaps', [])),
+  );
+  const [showSolved, setShowSolved] = useState(false);
+  const markSolved = (pageTitle: string, val: boolean) =>
+    setSolvedMaps((s) => {
+      const n = new Set(s);
+      if (val) n.add(pageTitle); else n.delete(pageTitle);
+      return n;
+    });
   const [wikiMap, setWikiMap] = useState<WikiMap | null>(() => load<WikiMap | null>('feh.sim.wikiMap', null));
   // Auto-réparation : une carte en cache d'avant l'ajout de `globalai` (ou du terrain)
   // manque des champs → on la re-télécharge pour retrouver le bon comportement d'IA.
@@ -304,10 +316,14 @@ export function Simulator({
     return () => clearTimeout(h);
   }, [mapQuery]);
 
+  // Catalogue visible = non résolu (les résolues sont masquées, dépliables à part).
+  const activeSaved = savedMaps.filter((s) => !solvedMaps.has(s.page_title));
+  const resolvedSaved = savedMaps.filter((s) => solvedMaps.has(s.page_title));
+
   // Suggestions affichées : d'abord le catalogue local (noms FR), puis les nouveautés du wiki.
   const mapQ = norm(mapQuery);
   const localMatches = mapQ.length >= 1
-    ? savedMaps.filter((s) => norm(s.name).includes(mapQ) || norm(s.page_title).includes(mapQ)).slice(0, 6)
+    ? activeSaved.filter((s) => norm(s.name).includes(mapQ) || norm(s.page_title).includes(mapQ)).slice(0, 6)
     : [];
   const savedTitles = new Set(savedMaps.map((s) => s.page_title));
   const wikiMatches = mapSug.filter((s) => !savedTitles.has(s.title)).slice(0, 8);
@@ -383,6 +399,7 @@ export function Simulator({
   useEffect(() => save('feh.sim.enemy', enemy), [enemy]);
   useEffect(() => save('feh.sim.enMode', enMode), [enMode]);
   useEffect(() => save('feh.sim.enemyHeroId', enemyHeroId), [enemyHeroId]);
+  useEffect(() => save('feh.sim.solvedMaps', [...solvedMaps]), [solvedMaps]);
   useEffect(() => save('feh.sim.wikiMap', wikiMap), [wikiMap]);
   useEffect(() => save('feh.sim.wikiDiff', wikiDiff), [wikiDiff]);
   useEffect(() => save('feh.sim.wikiSel', wikiSel), [wikiSel]);
@@ -970,10 +987,10 @@ export function Simulator({
               ) : null}
             </div>
 
-            {/* Catalogue : cartes déjà utilisées (plus récentes d'abord) */}
-            {savedMaps.length > 0 && !mapQuery.trim() ? (
+            {/* Catalogue : cartes à faire (résolues masquées, plus récentes d'abord) */}
+            {activeSaved.length > 0 && !mapQuery.trim() ? (
               <div className="mt-2 flex flex-wrap gap-1.5">
-                {savedMaps.slice(0, 16).map((s) => (
+                {activeSaved.slice(0, 16).map((s) => (
                   <span
                     key={s.page_title}
                     className="group inline-flex items-center gap-1 rounded-full border border-white/10 bg-black/30 py-0.5 pl-2.5 pr-1 text-[11px] text-warm-dim"
@@ -988,6 +1005,14 @@ export function Simulator({
                     </button>
                     <button
                       type="button"
+                      onClick={() => markSolved(s.page_title, true)}
+                      title="Marquer comme résolue (masque de la liste, pour toi)"
+                      className="px-0.5 text-warm-mute opacity-0 transition group-hover:opacity-100 hover:text-emerald-300"
+                    >
+                      ✓
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => renameSaved(s)}
                       title="Renommer"
                       className="px-0.5 text-warm-mute opacity-0 transition group-hover:opacity-100 hover:text-gold-text"
@@ -997,13 +1022,53 @@ export function Simulator({
                     <button
                       type="button"
                       onClick={() => removeSaved(s)}
-                      title="Retirer du catalogue"
+                      title="Retirer du catalogue (pour tout le monde)"
                       className="px-0.5 text-warm-mute opacity-0 transition group-hover:opacity-100 hover:text-red-300"
                     >
                       ✕
                     </button>
                   </span>
                 ))}
+              </div>
+            ) : null}
+
+            {/* Cartes résolues (par toi) : masquées par défaut, dépliables */}
+            {resolvedSaved.length > 0 && !mapQuery.trim() ? (
+              <div className="mt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowSolved((v) => !v)}
+                  className="text-[10.5px] text-warm-mute hover:text-warm-dim"
+                >
+                  ✓ Résolues ({resolvedSaved.length}) {showSolved ? '▲' : '▼'}
+                </button>
+                {showSolved ? (
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    {resolvedSaved.map((s) => (
+                      <span
+                        key={s.page_title}
+                        className="group inline-flex items-center gap-1 rounded-full border border-emerald-400/15 bg-emerald-950/20 py-0.5 pl-2.5 pr-1 text-[11px] text-warm-mute"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => loadSaved(s)}
+                          title={s.page_title}
+                          className="max-w-[170px] truncate line-through decoration-warm-mute/40 hover:text-gold-text hover:no-underline"
+                        >
+                          {s.name}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => markSolved(s.page_title, false)}
+                          title="Remettre dans les cartes à faire"
+                          className="px-0.5 text-warm-mute transition hover:text-gold-text"
+                        >
+                          ↩
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
               </div>
             ) : null}
 
@@ -1039,6 +1104,19 @@ export function Simulator({
                   ))}
                 </div>
               </div>
+
+              {/* Marquer la carte courante comme résolue (pour toi) → elle sort de la liste */}
+              <button
+                type="button"
+                onClick={() => markSolved(wikiMap.title, !solvedMaps.has(wikiMap.title))}
+                className={`mb-2 w-full rounded border py-1 font-feh text-[11px] transition ${
+                  solvedMaps.has(wikiMap.title)
+                    ? 'border-emerald-400/40 bg-emerald-900/25 text-emerald-200/90 hover:bg-emerald-900/40'
+                    : 'border-white/10 bg-black/20 text-warm-mute hover:border-emerald-400/40 hover:text-emerald-200/90'
+                }`}
+              >
+                {solvedMaps.has(wikiMap.title) ? '✓ Carte résolue (masquée de ta liste) — annuler' : '✓ Marquer cette carte comme résolue'}
+              </button>
 
               <MapGrid
                 enemies={wikiMap.difficulties[wikiDiff] ?? []}
