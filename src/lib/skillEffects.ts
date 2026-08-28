@@ -316,7 +316,8 @@ function parseSpecial(row: SkillRow | null, accel: boolean): SpecialInfo {
     || d.match(/(?:des?|de la)\s*(?:def|res)[^.;]*?reduite?[^.;]*?de\s*(\d+)\s*%/);
   if (ign) return { maxCd, kind: 'offense', defIgnorePct: +ign[1] };
   const st = d.match(/(?:boosts?|adds?|grants?) damage[^.;]*?by\s*(\d+)\s*%\s*of\s*(?:unit'?s?\s*)?(atk|spd|def|res|hp)/)
-    || d.match(/degats[^.;]*?\+\s*(\d+)\s*%\s*(?:des?|de la)\s*(atq|vit|def|res|pv)/);
+    // FR : « dégâts +N% de la Vit » OU « augmente les dégâts à hauteur de N% de l'Atq » (Aura draconique…)
+    || d.match(/degats[^.;]*?(?:\+|hauteur de)\s*(\d+)\s*%\s*(?:de\s*l['’]?|des?|de la|du)\s*(atq|vit|def|res|pv)/);
   if (st) {
     const raw = st[2];
     const stat = raw === 'hp' || raw === 'pv' ? 'hp' : STAT_KEY[raw];

@@ -71,7 +71,7 @@ export async function fetchWikiMap(pageTitle: string): Promise<WikiMap> {
       if (!/(?:^|;)unit=/.test(blk)) continue;
       const st = blk.match(/stats=\[(\d+);(\d+);(\d+);(\d+);(\d+)\]/);
       if (!st) continue;
-      const skills = ['weapon', 'special', 'a', 'b', 'c', 'seal']
+      const skills = ['weapon', 'special', 'a', 'b', 'c', 'seal', 'assist']
         .map((k) => field(blk, k))
         .filter((s) => s && s !== '-' && s !== '—');
       units.push({
