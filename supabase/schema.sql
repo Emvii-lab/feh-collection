@@ -166,6 +166,19 @@ alter table feh.duo_skill enable row level security;
 drop policy if exists "duo_skill_read" on feh.duo_skill;
 create policy "duo_skill_read" on feh.duo_skill for select using (true);
 
+-- 8) Terrain peint PARTAGÉ du simulateur : les obstacles (glace/forêt/eau du décor) ne sont
+--    que dans l'image de la carte, pas dans les données du wiki. On les peint UNE fois et on
+--    les partage (clé = page_title). Fusionné par-dessus le terrain auto (murs du wiki).
+create table if not exists feh.sim_terrain (
+  map        text primary key,             -- page_title de la carte
+  terrain    jsonb not null default '{}',  -- case -> type de terrain peint
+  updated_at timestamptz not null default now()
+);
+alter table feh.sim_terrain enable row level security;
+drop policy if exists "sim_terrain_all" on feh.sim_terrain;
+create policy "sim_terrain_all" on feh.sim_terrain
+  for all using (true) with check (true);
+
 -- ============================================================
 --  EXPOSER LE SCHÉMA "feh" À L'API (à faire UNE fois, self-hosted)
 -- ------------------------------------------------------------

@@ -26,7 +26,7 @@ import { fetchBuilds } from '../lib/builds';
 import { fetchAllHeroStats } from '../lib/heroStats';
 import {
   searchWikiMaps, fetchSavedMaps, upsertSavedMap, renameSavedMap, deleteSavedMap,
-  type MapSuggestion, type SavedMap,
+  fetchMapTerrain, saveMapTerrain, type MapSuggestion, type SavedMap, type PaintedTerrain,
 } from '../lib/mapCatalog';
 import { logFeedback } from '../lib/simFeedback';
 
@@ -506,6 +506,21 @@ export function Simulator({
     return () => { active = false; };
   }, [wikiMap, wikiDiff]);
 
+  // Terrain peint PARTAGÉ : au chargement d'une carte, on récupère les obstacles peints par
+  // la communauté (Supabase) et on les injecte dans le cache local → solveur/recherche/danger
+  // les lisent tout de suite. `null` = personne n'a encore peint cette carte (on garde le local).
+  const [sharedTerrain, setSharedTerrain] = useState<PaintedTerrain | null>(null);
+  useEffect(() => {
+    setSharedTerrain(null);
+    if (!wikiMap) return;
+    let active = true;
+    fetchMapTerrain(wikiMap.title).then((t) => {
+      if (!active || !t) return;
+      setSharedTerrain(t);
+      save('feh.sim.terrain.' + wikiMap.title, t); // cache local pour le solveur/danger
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [wikiMap]);
 
   // ===== Solveur de carte : construit le plateau, cherche une ligne gagnante (Web Worker).
   const [solving, setSolving] = useState(false);
@@ -1263,6 +1278,8 @@ export function Simulator({
                 liveEnemies={liveEnemies}
                 liveAllies={liveAllies}
                 danger={danger}
+                sharedEdits={sharedTerrain}
+                onEdited={(edits) => { if (wikiMap) saveMapTerrain(wikiMap.title, edits); }}
                 onMoveEnemy={(i, pos) => {
                   if (!liveOn) {
                     initLive();
@@ -1763,7 +1780,7 @@ const BRUSHES: { t: Terrain; label: string }[] = [
 
 function MapGrid({
   enemies, allyPos, team, selectedPos, heroByName, onPick, wikiTerrain, mapKey, mapImageUrl,
-  liveOn = false, liveEnemies = {}, liveAllies = {}, danger = {}, onMoveEnemy, onMoveAlly,
+  liveOn = false, liveEnemies = {}, liveAllies = {}, danger = {}, sharedEdits, onEdited, onMoveEnemy, onMoveAlly,
 }: {
   enemies: WikiEnemy[];
   allyPos: string[];
@@ -1778,6 +1795,8 @@ function MapGrid({
   liveEnemies?: Record<string, LiveOv>;
   liveAllies?: Record<string, LiveOv>;
   danger?: Record<string, DangerInfo>;
+  sharedEdits?: Record<string, string> | null; // terrain peint partagé (Supabase)
+  onEdited?: (edits: TerrainMap) => void;       // remonte les retouches pour les partager
   onMoveEnemy?: (idx: number, pos: string) => void;
   onMoveAlly?: (id: string, pos: string) => void;
 }) {
@@ -1814,10 +1833,14 @@ function MapGrid({
   const [showThreat, setShowThreat] = useState(true);
   const [showDanger, setShowDanger] = useState(true);
   const [brush, setBrush] = useState<Terrain | null>(null); // pinceau terrain actif
-  // Terrain édité à la main (persisté par carte), fusionné par-dessus le wiki.
+  // Terrain édité à la main (partagé via Supabase + cache local), fusionné par-dessus le wiki.
   const tKey = 'feh.sim.terrain.' + mapKey;
   const [edits, setEdits] = useState<TerrainMap>(() => load<TerrainMap>(tKey, {}));
   useEffect(() => { setEdits(load<TerrainMap>(tKey, {})); }, [tKey]);
+  // Adopte le terrain PARTAGÉ dès qu'il arrive (peint par la communauté sur cette carte).
+  useEffect(() => {
+    if (sharedEdits) { setEdits(sharedEdits as TerrainMap); save(tKey, sharedEdits); }
+  }, [sharedEdits, tKey]);
   // Terrain effectif : pré-rempli (image) < murs auto du wiki < tes retouches.
   const terrain: TerrainMap = { ...(MAP_TERRAIN[mapKey] ?? {}), ...wikiTerrain, ...edits };
   const paint = (pos: string) => {
@@ -1826,6 +1849,7 @@ function MapGrid({
       if (brush === 'plain') next[pos] = 'plain';
       else next[pos] = brush as Terrain;
       save(tKey, next);
+      onEdited?.(next); // partage la retouche (Supabase)
       return next;
     });
   };
@@ -1911,7 +1935,7 @@ function MapGrid({
         {Object.keys(edits).length ? (
           <button
             type="button"
-            onClick={() => { setEdits({}); save(tKey, {}); }}
+            onClick={() => { setEdits({}); save(tKey, {}); onEdited?.({}); }}
             className="rounded px-1.5 py-0.5 text-[10px] text-warm-mute hover:text-red-300"
           >
             réinitialiser
@@ -2066,7 +2090,7 @@ function MapGrid({
         <span><span className="inline-block rounded bg-rose-600 px-0.5 text-[7px] font-bold text-white align-middle">☠N</span> danger : dégâts pire cas (rouge = meurt)</span>
       </div>
       <p className="mt-0.5 text-center text-[9px] text-warm-mute/70">
-        Terrain pré-rempli (lu de l'image) + murs du wiki ; corrige au pinceau. Fort/forêt passables (fort ≠ blocage, il réduit les dégâts). Pour les blocs de glace du boss (Veine divine), peins-les avec 🧊 aux cases où tu les vois en jeu. <strong>Danger ☠️</strong> = pire cas si tous les ennemis qui peuvent t'atteindre te ciblent (glisse un perso pour tester une position). Sans IA de déplacement : repère fiable, pas une garantie de qui l'IA vise.
+        Terrain pré-rempli (lu de l'image) + murs du wiki ; corrige au pinceau — <strong>tes retouches sont partagées</strong> (peins une carte une fois, c'est mémorisé pour tout le monde). Fort/forêt passables (fort ≠ blocage, il réduit les dégâts). Peins les blocs de glace/piliers infranchissables avec 🧊 aux cases où tu les vois en jeu. <strong>Danger ☠️</strong> = pire cas si tous les ennemis qui peuvent t'atteindre te ciblent (glisse un perso pour tester une position). Sans IA de déplacement : repère fiable, pas une garantie de qui l'IA vise.
       </p>
     </div>
   );

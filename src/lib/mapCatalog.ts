@@ -116,3 +116,27 @@ export async function deleteSavedMap(page_title: string): Promise<void> {
   if (!supabase) return;
   await supabase.from('sim_map').delete().eq('page_title', page_title);
 }
+
+// ---- Terrain peint PARTAGÉ (feh.sim_terrain) ----
+// Les obstacles (glace/forêt/eau du décor) ne sont que dans l'image de la carte, pas dans
+// les données du wiki. On les peint à la main UNE fois, et on les partage entre tous.
+export type PaintedTerrain = Record<string, string>;
+
+export async function fetchMapTerrain(map: string): Promise<PaintedTerrain | null> {
+  if (!supabase) return null;
+  const { data, error } = await supabase
+    .from('sim_terrain')
+    .select('terrain')
+    .eq('map', map)
+    .maybeSingle();
+  if (error || !data) return null;
+  return (data.terrain as PaintedTerrain) ?? null;
+}
+
+export async function saveMapTerrain(map: string, terrain: PaintedTerrain): Promise<void> {
+  if (!supabase) return;
+  await supabase.from('sim_terrain').upsert(
+    { map, terrain, updated_at: new Date().toISOString() },
+    { onConflict: 'map' },
+  );
+}
