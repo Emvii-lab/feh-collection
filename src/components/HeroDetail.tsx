@@ -248,6 +248,12 @@ export function HeroDetail({
                 nameJa={hero.cvPartner2NameJa}
               />
               <Credit
+                icon="/feh/ui/voice.png"
+                alt="Voix (partenaire 3)"
+                name={hero.cvPartner3Name}
+                nameJa={hero.cvPartner3NameJa}
+              />
+              <Credit
                 icon="/feh/ui/design.png"
                 alt="Illustrateur"
                 name={

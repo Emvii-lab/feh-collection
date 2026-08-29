@@ -173,6 +173,7 @@ export function Credits({
         (h) => ({ name: h.cvName, ja: h.cvNameJa }),
         (h) => ({ name: h.cvPartnerName, ja: h.cvPartnerNameJa }),
         (h) => ({ name: h.cvPartner2Name, ja: h.cvPartner2NameJa }),
+        (h) => ({ name: h.cvPartner3Name, ja: h.cvPartner3NameJa }),
       ]),
     [heroes],
   );

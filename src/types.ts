@@ -56,11 +56,13 @@ export interface Hero {
   spriteResplendent?: string; // sprite resplendissant (Supabase: sprite_resplendent_url)
   cvName?: string; // voix : nom latin (feh.voice_actors.name)
   cvNameJa?: string; // voix : nom japonais (feh.voice_actors.name_ja)
-  // Voix supplémentaires (Duo = 2e, Trio = 2e + 3e) — feh.heroes.cv_ja_partner*_id
+  // Voix supplémentaires (Duo = 2e, Trio = 2e + 3e, 4e voix = cv_ja_partner3_id)
   cvPartnerName?: string;
   cvPartnerNameJa?: string;
   cvPartner2Name?: string;
   cvPartner2NameJa?: string;
+  cvPartner3Name?: string;
+  cvPartner3NameJa?: string;
   illustratorName?: string; // illustrateur : nom latin (feh.illustrators.name)
   illustratorNameJa?: string; // illustrateur : nom japonais (feh.illustrators.name_ja)
   // Illustrateur de la tenue resplendissante (peut différer)
