@@ -118,3 +118,31 @@ export function threatZone(
   }
   return out;
 }
+
+// Champ de distance : coût de CHEMIN de chaque case vers la cible la plus proche parmi
+// `targets`, selon le terrain et la classe de mouvement (multi-source Dijkstra). Sert à
+// faire avancer l'IA en CONTOURNANT les obstacles (murs/eau/glace), au lieu d'une distance
+// à vol d'oiseau qui l'envoie dans un mur. Ignore les unités (elles bougent) : heuristique.
+export function distanceField(
+  targets: string[], cls: MoveClass, terrain: TerrainMap,
+): Map<string, number> {
+  const dist = new Map<string, number>();
+  const pq: [number, string][] = [];
+  for (const t of targets) if (parsePos(t)) { dist.set(t, 0); pq.push([0, t]); }
+  while (pq.length) {
+    pq.sort((a, b) => a[0] - b[0]);
+    const [d, pos] = pq.shift()!;
+    if (d > (dist.get(pos) ?? Infinity)) continue;
+    const p = parsePos(pos)!;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = p.x + dx, ny = p.y + dy;
+      if (nx < 0 || nx > 5 || ny < 1 || ny > 8) continue;
+      const np = toPos(nx, ny);
+      const c = enterCost(terrain[np] ?? 'plain', cls);
+      if (!isFinite(c)) continue;
+      const nd = d + c;
+      if (nd < (dist.get(np) ?? Infinity)) { dist.set(np, nd); pq.push([nd, np]); }
+    }
+  }
+  return dist;
+}

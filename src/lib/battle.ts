@@ -4,7 +4,7 @@
 import { simulate, type Unit } from './combat';
 import {
   reachable, threatZone, manhattan, moveAllowance, moveClass, weaponRange,
-  parsePos, toPos, occupiable, terrainDR, type TerrainMap,
+  parsePos, toPos, occupiable, terrainDR, distanceField, type TerrainMap,
 } from './tactics';
 
 export type Side = 'ally' | 'enemy';
@@ -303,12 +303,15 @@ export function enemyPhase(board: Board): { board: Board; moves: EnemyMove[] } {
       return true;
     }
     if (allowMove && as.length) {
-      // Pas de cible atteignable → avancer vers l'allié le plus proche.
-      let dest = e.pos, bestD = Infinity;
+      // Pas de cible atteignable → avancer vers l'allié le plus proche, par la VRAIE distance
+      // de chemin (contourne murs/eau/glace au lieu d'une distance à vol d'oiseau qui bloque).
+      const field = distanceField(as.map((a) => a.pos), moveClass(e.unit.hero.moveType), enemyView());
+      let dest = e.pos, bestD = Infinity, bestTie = Infinity;
       for (const t of reach) {
         if (t !== e.pos && occ.has(t)) continue;
-        const d = Math.min(...as.map((a) => manhattan(t, a.pos)));
-        if (d < bestD) { bestD = d; dest = t; }
+        const d = field.get(t) ?? Math.min(...as.map((a) => manhattan(t, a.pos)));
+        const tie = Math.min(...as.map((a) => manhattan(t, a.pos))); // départage : vol d'oiseau
+        if (d < bestD || (d === bestD && tie < bestTie)) { bestD = d; bestTie = tie; dest = t; }
       }
       if (dest !== e.pos) {
         moves.push({ id: e.id, name: e.unit.hero.name, from: e.pos, to: dest });
