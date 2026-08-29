@@ -153,6 +153,19 @@ drop policy if exists "sim_feedback_all" on feh.sim_feedback;
 create policy "sim_feedback_all" on feh.sim_feedback
   for all using (true) with check (true);
 
+-- 7) Compétences Duo / Harmonisées (activation manuelle, absentes des slots de build)
+--    Importées du wiki (champ |duo= / |harmonized= des pages héros). Le simulateur les
+--    modélise comme un buff DISPONIBLE (approximation : en jeu, activation ponctuelle 1 tour).
+create table if not exists feh.duo_skill (
+  hero_id     text primary key references feh.heroes(id) on delete cascade,
+  kind        text,                       -- 'duo' | 'harmonized'
+  description text not null,
+  created_at  timestamptz not null default now()
+);
+alter table feh.duo_skill enable row level security;
+drop policy if exists "duo_skill_read" on feh.duo_skill;
+create policy "duo_skill_read" on feh.duo_skill for select using (true);
+
 -- ============================================================
 --  EXPOSER LE SCHÉMA "feh" À L'API (à faire UNE fois, self-hosted)
 -- ------------------------------------------------------------

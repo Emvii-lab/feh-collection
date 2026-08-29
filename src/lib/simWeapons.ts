@@ -12,6 +12,7 @@ export type WeaponInfo = {
   hasBuild: boolean; // true = effets lus de ton build équipé (kit exact) ; false = arme seule
   assistName?: string; // wiki_name de l'assist équipé/natif (pour détecter Repositionnement…)
   skillNames: string[]; // tous les wiki_name du kit (arme + passives…) pour détecter Veine divine (Glace), etc.
+  hasDuo?: boolean; // le héros a une compétence Duo/Harmonisée (modélisée comme buff disponible)
 };
 export const EMPTY_EFFECTS = (): ParsedEffects => parseSkillEffects([]);
 
@@ -163,6 +164,39 @@ export async function fetchTeamWeapons(
     for (const s of sk ?? []) skillMap.set((s as WRow).wiki_name, s as WRow);
   }
 
+  // 2bis) compétences DUO / Harmonisées (activation manuelle, feh.duo_skill). On les
+  // modélise comme un buff DISPONIBLE (approximation : traité comme actif, alors qu'en jeu
+  // c'est une activation ponctuelle d'1 tour au moment choisi). Rend au moins leur valeur.
+  const duoByHero = new Map<string, string>();
+  {
+    const { data: duo } = await supabase
+      .from('duo_skill')
+      .select('hero_id, description')
+      .in('hero_id', heroIds);
+    for (const d of (duo ?? []) as { hero_id: string; description: string }[])
+      if (d.description) duoByHero.set(d.hero_id, d.description);
+  }
+  // Fusionne la compétence Duo dans les effets du héros. Un Duo confère « à l'unité ET aux
+  // alliés » → le porteur reçoit AUSSI le bonus (le parseur le classe sinon en bonus de zone
+  // pour alliés seulement, comme un Hone). Approximation : buff considéré comme disponible.
+  const applyDuo = (eff: ParsedEffects, hid: string): ParsedEffects => {
+    const duo = duoByHero.get(hid);
+    if (!duo) return eff;
+    const d = parseSkillEffects([{ description: duo, scategory: 'passivea', cooldown: null }]);
+    eff.atkBuff += d.atkBuff + d.fieldBuff.atk;
+    eff.spdBuff += d.spdBuff + d.fieldBuff.spd;
+    eff.defBuff += d.defBuff + d.fieldBuff.def;
+    eff.resBuff += d.resBuff + d.fieldBuff.res;
+    eff.fieldBuff = {
+      atk: Math.max(eff.fieldBuff.atk, d.fieldBuff.atk),
+      spd: Math.max(eff.fieldBuff.spd, d.fieldBuff.spd),
+      def: Math.max(eff.fieldBuff.def, d.fieldBuff.def),
+      res: Math.max(eff.fieldBuff.res, d.fieldBuff.res),
+      range: Math.max(eff.fieldBuff.range, d.fieldBuff.range),
+    };
+    return eff;
+  };
+
   // 3a) héros AVEC build → moteur d'effets sur toute la panoplie équipée.
   for (const [hid, b] of builds) {
     const equippedNames = BUILD_SLOTS.map((s) => b[s]).filter((n): n is string => Boolean(n));
@@ -172,10 +206,11 @@ export async function fetchTeamWeapons(
     const weaponRow = b.weapon ? skillMap.get(b.weapon) : null;
     out.set(hid, {
       effAgainst: normEff(weaponRow?.weapon_effectiveness ?? null),
-      effects: parseSkillEffects(rows as SkillRow[]),
+      effects: applyDuo(parseSkillEffects(rows as SkillRow[]), hid),
       hasBuild: true,
       assistName: (b.assist as string | null) ?? undefined,
       skillNames: equippedNames,
+      hasDuo: duoByHero.has(hid),
     });
   }
 
@@ -191,10 +226,11 @@ export async function fetchTeamWeapons(
     if (kit.length) {
       out.set(hid, {
         effAgainst: normEff(weaponRow?.weapon_effectiveness ?? null),
-        effects: parseSkillEffects(kit as SkillRow[]),
+        effects: applyDuo(parseSkillEffects(kit as SkillRow[]), hid),
         hasBuild: false,
         assistName: assistRow?.wiki_name,
         skillNames: kit.map((r) => r.wiki_name),
+        hasDuo: duoByHero.has(hid),
       });
     }
   }
