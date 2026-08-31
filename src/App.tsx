@@ -661,7 +661,7 @@ export default function App() {
                 </div>
               ) : null}
               <div
-                className="grid gap-3 sm:gap-4 [grid-template-columns:repeat(auto-fill,minmax(128px,1fr))] sm:[grid-template-columns:repeat(auto-fill,minmax(152px,1fr))] md:[grid-template-columns:repeat(auto-fill,minmax(176px,1fr))]"
+                className="grid gap-2 sm:gap-4 [grid-template-columns:repeat(auto-fill,minmax(102px,1fr))] sm:[grid-template-columns:repeat(auto-fill,minmax(152px,1fr))] md:[grid-template-columns:repeat(auto-fill,minmax(176px,1fr))]"
               >
                 {shown.map((h, i) => (
                   <HeroCard

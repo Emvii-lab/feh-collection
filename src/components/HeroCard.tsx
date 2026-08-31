@@ -104,7 +104,7 @@ export function HeroCard({
           <span
             title="Niveau 40 (max)"
             aria-label="Niveau 40"
-            className="pointer-events-none absolute left-1/2 top-0 z-20 rounded-t-md px-2.5 py-[3px] font-feh text-[10.5px] font-bold leading-none tracking-[0.5px] text-[#3a2a06] shadow-[0_-1px_3px_rgba(0,0,0,.45)] ring-1 ring-[rgba(255,244,214,.7)]"
+            className="pointer-events-none absolute left-1/2 top-0 z-20 rounded-t-md px-1.5 py-[2px] sm:px-2.5 sm:py-[3px] font-feh text-[8px] sm:text-[10.5px] font-bold leading-none tracking-[0.5px] text-[#3a2a06] shadow-[0_-1px_3px_rgba(0,0,0,.45)] ring-1 ring-[rgba(255,244,214,.7)]"
             style={{
               background: 'linear-gradient(180deg,#ffe9a8,#e8c45e 58%,#b78a2e)',
               // bas de l'onglet posé PILE sur le bord haut du cadre (tout au-dessus)
@@ -119,7 +119,7 @@ export function HeroCard({
 
         <div className="card-flash relative aspect-[1/1.06] overflow-hidden rounded-2xl bg-[rgba(14,10,7,.72)]">
           {/* le sprite respire au survol/focus */}
-          <div className="card-sprite-bob absolute inset-x-0 top-0 bottom-[62px]">
+          <div className="card-sprite-bob absolute inset-x-0 top-0 bottom-[44px] sm:bottom-[62px]">
             <HeroPortrait
               hero={hero}
               className="h-full w-full"
@@ -131,7 +131,7 @@ export function HeroCard({
           {/* dégradé bas pour lisibilité du texte */}
           <div
             aria-hidden
-            className="absolute inset-x-0 bottom-0 h-[82px] bg-gradient-to-b from-transparent via-[rgba(14,10,7,.88)] to-[rgba(14,10,7,.96)]"
+            className="absolute inset-x-0 bottom-0 h-[60px] sm:h-[82px] bg-gradient-to-b from-transparent via-[rgba(14,10,7,.88)] to-[rgba(14,10,7,.96)]"
           />
 
           {/* éclat « Get ! » quand le héros vient de rejoindre la collection */}
@@ -181,7 +181,7 @@ export function HeroCard({
                 <img
                   src="/feh/ui/alternate_art.png"
                   alt=""
-                  className={`h-9 w-9 object-contain ${
+                  className={`h-6 w-6 sm:h-9 sm:w-9 object-contain ${
                     resplendentObtained
                       ? 'drop-shadow-[0_0_6px_rgba(251,230,166,0.9)]'
                       : 'opacity-70 grayscale drop-shadow-[0_1px_3px_rgba(0,0,0,.6)]'
@@ -193,7 +193,7 @@ export function HeroCard({
                 src="/feh/ui/alternate_art.png"
                 alt="Tenue resplendissante"
                 title="Tenue resplendissante"
-                className={`pointer-events-none absolute left-2 top-2 z-20 h-9 w-9 object-contain ${
+                className={`pointer-events-none absolute left-2 top-2 z-20 h-6 w-6 sm:h-9 sm:w-9 object-contain ${
                   resplendentObtained
                     ? 'drop-shadow-[0_0_6px_rgba(251,230,166,0.9)]'
                     : 'opacity-70 grayscale drop-shadow-[0_1px_3px_rgba(0,0,0,.6)]'
@@ -226,7 +226,7 @@ export function HeroCard({
               <img
                 src={owned ? '/feh/ui/button_down.png' : '/feh/ui/plus.png'}
                 alt=""
-                className={`h-7 w-7 drop-shadow-[0_2px_3px_rgba(0,0,0,.5)] transition-opacity ${
+                className={`h-5 w-5 sm:h-7 sm:w-7 drop-shadow-[0_2px_3px_rgba(0,0,0,.5)] transition-opacity ${
                   owned
                     ? 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
                     : ''
@@ -236,7 +236,7 @@ export function HeroCard({
           )}
 
           {/* étoiles */}
-          <div className="pointer-events-none absolute inset-x-0 bottom-[44px] z-20 flex justify-center text-[11px] tracking-[1px] text-gold-text">
+          <div className="pointer-events-none absolute inset-x-0 bottom-[30px] sm:bottom-[44px] z-20 flex justify-center text-[8px] sm:text-[11px] tracking-[1px] text-gold-text">
             <RarityStars
               rarity={displayRarity}
               rarityUrl={rarityIcons.get(displayRarity)}
@@ -244,11 +244,11 @@ export function HeroCard({
           </div>
 
           {/* nom + épithète */}
-          <div className="pointer-events-none absolute inset-x-0 bottom-[11px] z-20 px-2 text-center">
-            <div className="font-feh text-[17px] font-semibold leading-[1.05] tracking-[0.3px] text-warm-head">
+          <div className="pointer-events-none absolute inset-x-0 bottom-[7px] sm:bottom-[11px] z-20 px-1.5 sm:px-2 text-center">
+            <div className="truncate font-feh text-[12px] sm:text-[17px] font-semibold leading-[1.05] tracking-[0.3px] text-warm-head">
               {hero.name}
             </div>
-            <div className="mt-px truncate text-[10.5px] text-[#c4b48f]">
+            <div className="mt-px truncate text-[8.5px] sm:text-[10.5px] text-[#c4b48f]">
               {hero.title}
             </div>
           </div>
