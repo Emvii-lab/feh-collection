@@ -718,7 +718,6 @@ export default function App() {
           resplendentObtained={stats.get(selected.id)?.resplendent ?? false}
           sealPick={sealAlloc.get(selected.id) ?? null}
           onSaved={refetch}
-          onSimulate={() => openSim(selected)}
         />
       )}
 
