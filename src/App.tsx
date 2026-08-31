@@ -358,19 +358,17 @@ export default function App() {
       />
       {/* ===== Top bar (cadre pierre FEH) ===== */}
       <header
-        className="relative z-20 flex h-[80px] flex-none items-center gap-2.5 sm:gap-5"
+        className="relative z-20 flex h-[80px] flex-none items-center gap-2.5 pl-[3.5%] pr-[11%] sm:gap-5 sm:pr-[19.5%]"
         style={{
           backgroundImage: "url('/feh/ui/header.png')",
           backgroundSize: '100% 100%',
           backgroundRepeat: 'no-repeat',
-          paddingLeft: '3.5%',
-          paddingRight: '19.5%',
         }}
       >
         <img
           src="/feh/ui/logo.png"
           alt="Fire Emblem Heroes"
-          className="mt-5 hidden h-8 sm:h-10 w-auto flex-none self-start drop-shadow-[0_2px_3px_rgba(0,0,0,0.55)] sm:block"
+          className="mt-5 h-7 sm:h-10 w-auto flex-none self-start drop-shadow-[0_2px_3px_rgba(0,0,0,0.55)]"
         />
         <div className="mt-5 min-w-0 self-start">
           <div className="txt-stroke truncate font-feh text-[15px] sm:text-[22px] font-semibold leading-none tracking-[0.5px]">
