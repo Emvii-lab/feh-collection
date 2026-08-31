@@ -358,7 +358,7 @@ export default function App() {
       />
       {/* ===== Top bar (cadre pierre FEH) ===== */}
       <header
-        className="relative z-20 flex h-[80px] flex-none items-center gap-5"
+        className="relative z-20 flex h-[80px] flex-none items-center gap-2.5 sm:gap-5"
         style={{
           backgroundImage: "url('/feh/ui/header.png')",
           backgroundSize: '100% 100%',
@@ -370,13 +370,13 @@ export default function App() {
         <img
           src="/feh/ui/logo.png"
           alt="Fire Emblem Heroes"
-          className="mt-5 h-10 w-auto flex-none self-start drop-shadow-[0_2px_3px_rgba(0,0,0,0.55)]"
+          className="mt-5 h-8 sm:h-10 w-auto flex-none self-start drop-shadow-[0_2px_3px_rgba(0,0,0,0.55)]"
         />
-        <div className="mt-5 flex-none self-start">
-          <div className="txt-stroke font-feh text-[22px] font-semibold leading-none tracking-[0.5px]">
+        <div className="mt-5 min-w-0 self-start">
+          <div className="txt-stroke truncate font-feh text-[15px] sm:text-[22px] font-semibold leading-none tracking-[0.5px]">
             Catalogue des Héros
           </div>
-          <div className="txt-stroke-sm mt-[4px] text-[11.5px] font-semibold">
+          <div className="txt-stroke-sm mt-[4px] truncate text-[10px] sm:text-[11.5px] font-semibold">
             {viewedEmail
               ? `Collection de ${viewedEmail} · ${ownedCount} / ${total} · lecture seule`
               : `Ordre d'Askr · ${ownedCount} / ${total} obtenus`}
