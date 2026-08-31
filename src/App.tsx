@@ -370,7 +370,7 @@ export default function App() {
         <img
           src="/feh/ui/logo.png"
           alt="Fire Emblem Heroes"
-          className="mt-5 h-8 sm:h-10 w-auto flex-none self-start drop-shadow-[0_2px_3px_rgba(0,0,0,0.55)]"
+          className="mt-5 hidden h-8 sm:h-10 w-auto flex-none self-start drop-shadow-[0_2px_3px_rgba(0,0,0,0.55)] sm:block"
         />
         <div className="mt-5 min-w-0 self-start">
           <div className="txt-stroke truncate font-feh text-[15px] sm:text-[22px] font-semibold leading-none tracking-[0.5px]">
