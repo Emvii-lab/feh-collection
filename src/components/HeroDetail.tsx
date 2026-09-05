@@ -88,6 +88,7 @@ export function HeroDetail({
   const galleryArts = variants.length ? variants : [artUrl];
   const [gallery, setGallery] = useState(false);
   const [artIndex, setArtIndex] = useState(0);
+  const [artDir, setArtDir] = useState(1); // sens du glissement : +1 suivant, -1 précédent
 
   // Onglet bas de modal : stats ou voix (voix chargées à la demande).
   const [detailTab, setDetailTab] = useState<'stats' | 'kit' | 'voix'>('stats');
@@ -357,9 +358,11 @@ export function HeroDetail({
           }}
         >
           <img
+            key={artIndex}
             src={galleryArts[artIndex]}
             alt={hero.name}
-            className="max-h-[92vh] max-w-full object-contain"
+            className="art-slide max-h-[92vh] max-w-full object-contain"
+            style={{ ['--dir' as string]: artDir }}
             onClick={(e) => e.stopPropagation()}
           />
           <button
@@ -377,6 +380,7 @@ export function HeroDetail({
               <button
                 onClick={(e) => {
                   e.stopPropagation();
+                  setArtDir(-1);
                   setArtIndex((i) => (i - 1 + galleryArts.length) % galleryArts.length);
                 }}
                 className="absolute left-3 top-1/2 -translate-y-1/2 transition hover:brightness-125 sm:left-6"
@@ -393,6 +397,7 @@ export function HeroDetail({
               <button
                 onClick={(e) => {
                   e.stopPropagation();
+                  setArtDir(1);
                   setArtIndex((i) => (i + 1) % galleryArts.length);
                 }}
                 className="absolute right-3 top-1/2 -translate-y-1/2 transition hover:brightness-125 sm:right-6"

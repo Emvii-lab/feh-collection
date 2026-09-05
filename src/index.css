@@ -150,6 +150,22 @@
   animation: arrowNudgeR 0.85s ease-in-out infinite;
 }
 
+/* Glissement de l'illustration entrante dans la galerie (sens = --dir : +1 suivant, -1 précédent) */
+@keyframes artSlideIn {
+  from {
+    transform: translateX(calc(var(--dir, 1) * 14vw));
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+.art-slide {
+  animation: artSlideIn 0.32s cubic-bezier(0.22, 0.61, 0.36, 1);
+  will-change: transform, opacity;
+}
+
 /* ===== Animations des cartes héros =====
    Reprises de l'exploration « pixel RPG » : on ne garde QUE le mouvement, le
    graphisme reste celui de l'app (cadre arrondi, or, dégradés). L'easing est
@@ -250,7 +266,10 @@
     animation: none !important;
   }
   .anim-arrow-l,
-  .anim-arrow-r {
+  .anim-arrow-r,
+  .art-slide {
     animation: none !important;
+    transform: none !important;
+    opacity: 1 !important;
   }
 }
