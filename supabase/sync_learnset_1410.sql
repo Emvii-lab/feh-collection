@@ -1,4 +1,4 @@
--- Sync learnset auto (feh_gen_sql.py) : héros IntID 1410, généré le 2026-09-03.
+-- Sync learnset auto (feh_gen_sql.py) : héros IntID 1410, généré le 2026-09-05.
 -- Compétences neuves absentes de feh.skills (4, vérifiées par wiki_name exact).
 -- À coller dans Supabase Studio (SQL Editor), APRÈS le(s) fichier(s) add_hero(es) correspondant(s).
 begin;

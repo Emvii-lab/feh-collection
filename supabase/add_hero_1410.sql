@@ -1,4 +1,4 @@
--- Ajout auto (feh_gen_sql.py) : héros IntID 1410, généré le 2026-09-03.
+-- Ajout auto (feh_gen_sql.py) : héros IntID 1410, généré le 2026-09-05.
 -- Titre + origine en anglais (comme le reste de la table) ; arme/déplacement
 -- en français (valeurs des FK weapon_types / move_types). Rarity = 5 (convention
 -- du catalogue). art_url laissé NULL. VÉRIFIE avant d'exécuter (titre EN à garder,
