@@ -42,3 +42,5 @@ supabase/sync_learnset_1409.sql
 supabase/sync_learnset_1405-1408.sql
 supabase/add_hero_1410.sql
 supabase/sync_learnset_1410.sql
+supabase/add_heroes_1411-1414.sql
+supabase/sync_learnset_1411-1414.sql
