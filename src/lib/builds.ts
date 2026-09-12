@@ -6,7 +6,7 @@ import { supabase } from './supabase';
 // Table feh.hero_build : calquée sur feh.collection (clé user_id+hero_id, même RLS).
 
 export const BUILD_SLOTS = [
-  'weapon', 'assist', 'special', 'passive_a', 'passive_b', 'passive_c', 'passive_x', 'seal',
+  'weapon', 'assist', 'special', 'passive_a', 'passive_b', 'passive_c', 'seal', 'passive_x',
 ] as const;
 export type BuildSlot = (typeof BUILD_SLOTS)[number];
 
