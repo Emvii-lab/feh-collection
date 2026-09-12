@@ -6,24 +6,26 @@ import { supabase } from './supabase';
 // Table feh.hero_build : calquée sur feh.collection (clé user_id+hero_id, même RLS).
 
 export const BUILD_SLOTS = [
-  'weapon', 'assist', 'special', 'passive_a', 'passive_b', 'passive_c', 'seal',
+  'weapon', 'assist', 'special', 'passive_a', 'passive_b', 'passive_c', 'passive_x', 'seal',
 ] as const;
 export type BuildSlot = (typeof BUILD_SLOTS)[number];
 
 // Emplacement → catégorie de skill (scategory) dans feh.skills.
 export const SLOT_CATEGORY: Record<BuildSlot, string> = {
   weapon: 'weapon', assist: 'assist', special: 'special',
-  passive_a: 'passivea', passive_b: 'passiveb', passive_c: 'passivec', seal: 'sacredseal',
+  passive_a: 'passivea', passive_b: 'passiveb', passive_c: 'passivec',
+  passive_x: 'passivex', seal: 'sacredseal',
 };
 export const SLOT_LABEL: Record<BuildSlot, string> = {
   weapon: 'Arme', assist: 'Assist', special: 'Spéciale',
-  passive_a: 'Passif A', passive_b: 'Passif B', passive_c: 'Passif C', seal: 'Sceau',
+  passive_a: 'Passif A', passive_b: 'Passif B', passive_c: 'Passif C',
+  passive_x: 'Passif X', seal: 'Passif S',
 };
 
 export type HeroBuild = Record<BuildSlot, string | null>;
 export const EMPTY_BUILD = (): HeroBuild => ({
   weapon: null, assist: null, special: null,
-  passive_a: null, passive_b: null, passive_c: null, seal: null,
+  passive_a: null, passive_b: null, passive_c: null, passive_x: null, seal: null,
 });
 
 // Récupère le build d'un héros pour `userId` (ou null si aucun).
