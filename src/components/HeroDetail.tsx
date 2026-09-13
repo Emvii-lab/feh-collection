@@ -43,7 +43,7 @@ function FitText({
     <span
       ref={ref}
       className={className}
-      style={{ fontSize: size, display: 'block', width: '100%', whiteSpace: 'nowrap', overflow: 'hidden' }}
+      style={{ fontSize: size, display: 'block', width: '100%', whiteSpace: 'nowrap', lineHeight: 1.4 }}
     >
       {text}
     </span>
