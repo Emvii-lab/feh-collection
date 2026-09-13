@@ -235,20 +235,20 @@ export function HeroCard({
             </button>
           )}
 
-          {/* étoiles */}
-          <div className="pointer-events-none absolute inset-x-0 bottom-[30px] sm:bottom-[44px] z-20 flex justify-center text-[8px] sm:text-[11px] tracking-[1px] text-gold-text">
-            <RarityStars
-              rarity={displayRarity}
-              rarityUrl={rarityIcons.get(displayRarity)}
-            />
-          </div>
-
-          {/* nom + épithète */}
-          <div className="pointer-events-none absolute inset-x-0 bottom-[7px] sm:bottom-[11px] z-20 px-1.5 sm:px-2 text-center">
-            <div className="truncate font-feh text-[12px] sm:text-[17px] font-semibold leading-[1.05] tracking-[0.3px] text-warm-head">
+          {/* étoiles + nom + épithète : empilés et ancrés en bas → le texte s'affiche en
+              ENTIER (retour à la ligne si besoin) sans être coupé ni se chevaucher.
+              Ombre portée pour rester lisible si le texte long remonte sur le sprite. */}
+          <div className="pointer-events-none absolute inset-x-0 bottom-[6px] sm:bottom-[9px] z-20 flex flex-col items-center px-1 sm:px-2 text-center [text-shadow:0_1px_2px_rgba(0,0,0,.95),0_0_4px_rgba(0,0,0,.8)]">
+            <div className="mb-0.5 flex justify-center text-[8px] sm:text-[11px] tracking-[1px] text-gold-text">
+              <RarityStars
+                rarity={displayRarity}
+                rarityUrl={rarityIcons.get(displayRarity)}
+              />
+            </div>
+            <div className="font-feh text-[12px] sm:text-[17px] font-semibold leading-[1.05] tracking-[0.3px] text-warm-head">
               {hero.name}
             </div>
-            <div className="mt-px truncate text-[8.5px] sm:text-[10.5px] text-[#c4b48f]">
+            <div className="mt-px text-[8.5px] sm:text-[10.5px] leading-tight text-[#d3c39c]">
               {hero.title}
             </div>
           </div>

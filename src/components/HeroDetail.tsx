@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import type { Hero } from '../types';
 import { MoveIcon, RarityStars, WeaponIcon } from './icons';
 import { useHeroVoices, type HeroVoices } from '../lib/useHeroVoices';
@@ -10,6 +10,45 @@ import { useRarityIcons } from '../lib/useRarityIcons';
 import { useGames } from '../lib/useGames';
 
 const GOLD_GRAD = 'linear-gradient(90deg,#b78a2e,#ffd166 70%,#fff3cf)';
+
+// Ajuste la taille de police pour que le texte tienne sur UNE ligne dans sa largeur
+// (plaque de nom à taille fixe) → jamais coupé, réduit seulement quand c'est nécessaire.
+function FitText({
+  text,
+  max,
+  min,
+  className,
+}: {
+  text: string;
+  max: number;
+  min: number;
+  className?: string;
+}) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const [size, setSize] = useState(max);
+  useLayoutEffect(() => {
+    const fit = () => {
+      const el = ref.current;
+      if (!el) return;
+      el.style.fontSize = max + 'px';
+      const avail = el.clientWidth;
+      const natural = el.scrollWidth;
+      setSize(avail > 0 && natural > avail ? Math.max(min, Math.floor((max * avail) / natural)) : max);
+    };
+    fit();
+    window.addEventListener('resize', fit);
+    return () => window.removeEventListener('resize', fit);
+  }, [text, max, min]);
+  return (
+    <span
+      ref={ref}
+      className={className}
+      style={{ fontSize: size, display: 'block', width: '100%', whiteSpace: 'nowrap', overflow: 'hidden' }}
+    >
+      {text}
+    </span>
+  );
+}
 
 // Catégories de voix (clé de colonne = `${key}_${n}`) + libellé FR + nb max de clips.
 const VOICE_CATS: { key: string; label: string; max: number }[] = [
@@ -210,12 +249,12 @@ export function HeroDetail({
                 className="w-full select-none"
                 draggable={false}
               />
-              <span className="txt-banner absolute inset-x-0 top-[35%] -translate-y-1/2 truncate px-[15%] text-center font-feh text-[16px] leading-[1.35]">
-                {hero.title || 'Héros'}
-              </span>
-              <span className="txt-banner absolute inset-x-0 top-[62%] -translate-y-1/2 truncate px-[13%] text-center font-feh text-[25px] font-bold leading-[1.35]">
-                {hero.name}
-              </span>
+              <div className="absolute inset-x-0 top-[35%] -translate-y-1/2 px-[12%]">
+                <FitText text={hero.title || 'Héros'} max={16} min={9} className="txt-banner text-center font-feh leading-[1.35]" />
+              </div>
+              <div className="absolute inset-x-0 top-[62%] -translate-y-1/2 px-[10%]">
+                <FitText text={hero.name} max={25} min={13} className="txt-banner text-center font-feh font-bold leading-[1.35]" />
+              </div>
               <div className="absolute inset-x-0 top-[84%] -translate-y-1/2 flex justify-center">
                 <RarityStars rarity={displayRarity} rarityUrl={starUrl} />
               </div>
