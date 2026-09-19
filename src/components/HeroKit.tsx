@@ -122,9 +122,16 @@ function weaponSecondary(s: SkillRow): number {
 function pickBestWeapon(weapons: SkillRow[], ceilings?: Map<string, number>): SkillRow | null {
   if (weapons.length === 0) return null;
   const sup = supersededSet(weapons);
+  // 0) Une arme à COMPÉTENCE (PRF, arme à effet : elle a une description) prime sur une arme
+  //    vanille (Fer/Acier/Argent/+/souffle de base, sans effet), même à Dmg brut inférieur :
+  //    dans le kit natif, l'arme signature est quasi toujours la meilleure. On « lit les
+  //    compétences » via la présence d'un effet, faute d'un modèle de valeur d'effet complet.
+  const hasEffect = (w: SkillRow) => (w.description ?? '').trim().length > 0;
   // 1) PLAFOND de raffinage (choisit la bonne ARME : une PRF raffinable à 18 > commune 16).
   const ceilingOf = (w: SkillRow) => Math.max(effMight(w), ceilings?.get(w.name) ?? 0);
   return weapons.reduce((a, b) => {
+    const fa = hasEffect(a), fb = hasEffect(b);
+    if (fa !== fb) return fb ? b : a; // l'arme à effet passe devant l'arme vanille
     const ca = ceilingOf(a), cb = ceilingOf(b);
     if (cb !== ca) return cb > ca ? b : a;
     // 2) À plafond égal (mêmes variantes d'une arme) : la variante au plus gros Dmg PRÉSENT
