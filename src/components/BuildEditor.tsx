@@ -11,12 +11,15 @@ type Meta = { name: string; icon: string | null };
 // Éditeur de build : équipe tes vraies compétences par emplacement. Sert au simulateur
 // (précision réelle de TON équipe). Options = kit natif du héros + skills hérités (recherche).
 export function BuildEditor({
-  heroId, userId, readOnly, learnset,
+  heroId, userId, readOnly, learnset, reco,
 }: {
   heroId: string;
   userId: string | null;
   readOnly?: boolean;
   learnset: SkillRow[] | null;
+  // Compétence conseillée par emplacement (wiki_name) : l'emplacement passe en surbrillance
+  // quand l'équipé correspond — « celle-là est déjà la bonne, pas de PA à dépenser ».
+  reco?: Partial<Record<BuildSlot, string | null>>;
 }) {
   const [build, setBuild] = useState<HeroBuild>(EMPTY_BUILD);
   const [meta, setMeta] = useState<Map<string, Meta>>(new Map());
@@ -80,15 +83,28 @@ export function BuildEditor({
     );
   }
 
+  // Emplacements déjà pourvus de la compétence conseillée. Le total ne compte QUE les
+  // emplacements qui ont un conseil (beaucoup de héros n'ont ni Assist ni Passif X) :
+  // sinon le score serait inatteignable.
+  const isBestAt = (slot: BuildSlot) =>
+    Boolean(build[slot]) && reco?.[slot] === build[slot];
+  const advised = BUILD_SLOTS.filter((slot) => Boolean(reco?.[slot]));
+  const bestCount = advised.filter(isBestAt).length;
+
   return (
     <div className="rounded-lg border border-gold-deep/40 bg-gold/[0.05] px-3 py-2.5">
-      <div className="mb-2 flex items-center gap-2">
+      <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-0.5">
         <span className="font-feh text-[13px] font-semibold text-gold-text">
           ⚔️ Ton build équipé
         </span>
         <span className="text-[10.5px] text-warm-mute">
           {readOnly ? '(lecture seule)' : '· sert au simulateur'}
         </span>
+        {advised.length ? (
+          <span className="text-[10.5px] text-gold-light/80">
+            ✓ {bestCount}/{advised.length} au top
+          </span>
+        ) : null}
         {saving ? <span className="text-[10px] text-emerald-300/80">enregistré…</span> : null}
       </div>
       <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
@@ -100,6 +116,7 @@ export function BuildEditor({
             meta={build[slot] ? meta.get(build[slot]!) : undefined}
             learnset={learnset}
             readOnly={readOnly}
+            isBest={isBestAt(slot)}
             isOpen={open === slot}
             onOpen={() => setOpen((o) => (o === slot ? null : slot))}
             onPick={(wn, m) => equip(slot, wn, m)}
@@ -112,13 +129,14 @@ export function BuildEditor({
 }
 
 function SlotRow({
-  slot, value, meta, learnset, readOnly, isOpen, onOpen, onPick, onClear,
+  slot, value, meta, learnset, readOnly, isBest, isOpen, onOpen, onPick, onClear,
 }: {
   slot: BuildSlot;
   value: string | null;
   meta?: Meta;
   learnset: SkillRow[] | null;
   readOnly?: boolean;
+  isBest?: boolean; // l'équipé est la compétence conseillée pour cet emplacement
   isOpen: boolean;
   onOpen: () => void;
   onPick: (wikiName: string, m: Meta) => void;
@@ -127,8 +145,18 @@ function SlotRow({
   const cat = SLOT_CATEGORY[slot];
   return (
     <div className="relative">
-      <div className="flex items-center gap-1.5 rounded-md border border-white/10 bg-black/25 px-2 py-1.5">
-        <span className="w-[62px] shrink-0 font-feh text-[10.5px] font-semibold text-warm-mute">
+      <div
+        className={`flex items-center gap-1.5 rounded-md border px-2 py-1.5 ${
+          isBest
+            ? 'border-gold/50 bg-gold/[0.10] shadow-[inset_0_0_12px_-4px_rgba(230,190,110,0.35)]'
+            : 'border-white/10 bg-black/25'
+        }`}
+      >
+        <span
+          className={`w-[62px] shrink-0 font-feh text-[10.5px] font-semibold ${
+            isBest ? 'text-gold-text' : 'text-warm-mute'
+          }`}
+        >
           {SLOT_LABEL[slot]}
         </span>
         <button
@@ -140,9 +168,27 @@ function SlotRow({
           {meta?.icon ? (
             <img src={meta.icon} alt="" className="h-5 w-5 shrink-0 object-contain" />
           ) : null}
-          <span className={`truncate text-[12px] ${value ? 'text-warm-text' : 'text-warm-mute/70 italic'}`}>
+          <span
+            className={`truncate text-[12px] ${
+              isBest ? 'font-semibold text-gold-light' : value ? 'text-warm-text' : 'text-warm-mute/70 italic'
+            }`}
+          >
             {meta?.name ?? (value ?? '— vide —')}
           </span>
+          {isBest ? (
+            <span
+              title={
+                slot === 'weapon'
+                  ? 'Tu as déjà la meilleure arme de son kit — rien à dépenser ici.'
+                  : slot === 'seal'
+                    ? 'Tu as déjà le sceau conseillé pour ce héros.'
+                    : 'Tu as déjà la compétence conseillée pour cet emplacement — rien à dépenser ici.'
+              }
+              className="shrink-0 cursor-help font-feh text-[11px] font-bold text-gold-light"
+            >
+              ✓
+            </span>
+          ) : null}
           {!readOnly ? <span className="ml-auto shrink-0 text-[10px] text-warm-mute">▾</span> : null}
         </button>
         {value && !readOnly ? (

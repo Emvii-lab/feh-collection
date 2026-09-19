@@ -3,6 +3,7 @@ import type { SkillRow } from '../lib/useHeroSkills';
 import { fetchHeroStats, type CollStats } from '../lib/collection';
 import { supabase } from '../lib/supabase';
 import { isHighRarity, type SealPick } from '../lib/seals';
+import { BUILD_SLOTS, SLOT_CATEGORY, type BuildSlot } from '../lib/builds';
 import { BuildEditor } from './BuildEditor';
 
 const REFINE_LABEL: Record<string, string> = {
@@ -364,12 +365,32 @@ export function HeroKit({
 
   const advice = orientation(stats);
   const seal = sealPick ?? null;
+
+  // Compétence conseillée par EMPLACEMENT de build : sert à surligner, dans « Ton build
+  // équipé », les emplacements déjà pourvus de la meilleure option — pratique quand les PA
+  // manquent, on voit d'un coup d'œil ce qui reste à investir.
+  const recoBySlot = Object.fromEntries(
+    BUILD_SLOTS.map((slot) => [
+      slot,
+      slot === 'weapon'
+        ? bestWeapon?.wiki_name ?? null
+        : slot === 'seal'
+          ? seal?.key ?? null
+          : bestPerSlot.get(SLOT_CATEGORY[slot]) ?? null,
+    ]),
+  ) as Record<BuildSlot, string | null>;
   const refineText = refineAdvice(stats, bestWeapon ? refineData.pathsByName.get(bestWeapon.name) ?? [] : []);
 
   return (
     <>
     <div className="space-y-4 px-5 pb-5 pt-3">
-      <BuildEditor heroId={heroId} userId={userId} readOnly={readOnly} learnset={skills} />
+      <BuildEditor
+        heroId={heroId}
+        userId={userId}
+        readOnly={readOnly}
+        learnset={skills}
+        reco={recoBySlot}
+      />
 
       {advice ? (
         <div className="rounded-lg border border-gold-deep/40 bg-gold/[0.06] px-3 py-2 text-[12.5px] text-warm-text">
