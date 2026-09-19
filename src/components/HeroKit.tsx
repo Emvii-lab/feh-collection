@@ -210,10 +210,19 @@ function rarityClass(r: number): string {
 
 // Compétences "dépassées" dans un slot = celles qui servent de prérequis (`required`)
 // à une autre compétence présente dans le kit → il existe une version supérieure.
+// Compétences DÉPASSÉES = tout prérequis d'une autre compétence. `required` peut en lister
+// PLUSIEURS, séparés par « ; » (ex. « AtkRes Scowl 3;DefRes Scowl 3 ») → il faut les éclater,
+// sinon les paliers inférieurs restent dans le pool et faussent la « meilleure » compétence.
 function supersededSet(list: SkillRow[]): Set<string> {
-  return new Set(
-    list.map((s) => s.required).filter((x): x is string => Boolean(x)),
-  );
+  const out = new Set<string>();
+  for (const s of list) {
+    if (!s.required) continue;
+    for (const req of s.required.split(';')) {
+      const t = req.trim();
+      if (t) out.add(t);
+    }
+  }
+  return out;
 }
 
 export function HeroKit({
