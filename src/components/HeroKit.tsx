@@ -215,7 +215,15 @@ function rarityClass(r: number): string {
 // sinon les paliers inférieurs restent dans le pool et faussent la « meilleure » compétence.
 function supersededSet(list: SkillRow[]): Set<string> {
   const out = new Set<string>();
+  const present = new Set(list.map((s) => s.wiki_name));
   for (const s of list) {
+    // Filet de secours : le wiki oublie parfois de renseigner `required` sur une version « + »
+    // (ex. Fell Protection Plus / Protect. déchue +). Or « X Plus » est TOUJOURS l'amélioration
+    // de « X » : si les deux sont dans le kit, la base est dépassée, lien ou pas.
+    if (s.wiki_name.endsWith(' Plus')) {
+      const base = s.wiki_name.slice(0, -' Plus'.length);
+      if (present.has(base)) out.add(base);
+    }
     if (!s.required) continue;
     for (const req of s.required.split(';')) {
       const t = req.trim();
