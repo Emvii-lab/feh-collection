@@ -80,9 +80,21 @@ function cleanWikiML(t: string | null): string {
     .trim();
 }
 
-const isBrave = (d: string | null) => /attacks?\s+twice|brave/i.test(d ?? '');
+// Les descriptions de la base sont tantot en anglais, tantot traduites : il faut
+// reconnaitre les DEUX langues, sinon une arme Brave traduite passe pour une arme banale
+// (ex. l'Arc ninja d'Ylisse de Lucina, qui perdait face a un simple Arc argent).
+// Piege : beaucoup d'armes CITENT l'effet Brave pour s'y referer ou l'exclure
+// (« pour les effets qui conferent "l'unite attaque deux fois" … ») sans l'accorder.
+// On retire donc la citation entre guillemets AVANT de chercher l'octroi reel.
+const BRAVE_CITE =
+  /[«"]\s*(?:l['’]unit[ée]|unit)\s+(?:attaques?|attacks?)\s+(?:deux fois|twice)\s*[»"]/gi;
+const BRAVE_OCTROI =
+  /(?:l['’]unit[ée]|elle|unit)\s+(?:attaques?|attacks?)\s+(?:deux fois|twice)/i;
+const isBrave = (d: string | null) => BRAVE_OCTROI.test((d ?? '').replace(BRAVE_CITE, ' '));
 const isSlaying = (d: string | null) =>
-  /accelerates special|slaying|special cooldown charge/i.test(d ?? '');
+  /accelerates special|slaying|special cooldown charge|acc[ée]l[èe]re l['’]activation des aptitudes sp[ée]ciales/i.test(
+    d ?? '',
+  );
 
 // stat_modifiers = "HP,ATK,SPD,DEF,RES" (inclut le raffinage, ex. raffinage ATQ → +ATQ).
 function parseMods(s: SkillRow): { hp: number; atk: number; spd: number; def: number; res: number } {
