@@ -91,10 +91,6 @@ const BRAVE_CITE =
 const BRAVE_OCTROI =
   /(?:l['’]unit[ée]|elle|unit)\s+(?:attaques?|attacks?)\s+(?:deux fois|twice)/i;
 const isBrave = (d: string | null) => BRAVE_OCTROI.test((d ?? '').replace(BRAVE_CITE, ' '));
-const isSlaying = (d: string | null) =>
-  /accelerates special|slaying|special cooldown charge|acc[ée]l[èe]re l['’]activation des aptitudes sp[ée]ciales/i.test(
-    d ?? '',
-  );
 
 // stat_modifiers = "HP,ATK,SPD,DEF,RES" (inclut le raffinage, ex. raffinage ATQ → +ATQ).
 function parseMods(s: SkillRow): { hp: number; atk: number; spd: number; def: number; res: number } {
@@ -156,12 +152,6 @@ function pickBestWeapon(weapons: SkillRow[], ceilings?: Map<string, number>): Sk
     if (sb !== sa) return sb > sa ? b : a;
     return sup.has(a.wiki_name) && !sup.has(b.wiki_name) ? b : a;
   });
-}
-function weaponReason(w: SkillRow): string[] {
-  const r: string[] = [];
-  if (isBrave(w.description)) r.push('×2 attaques');
-  if (isSlaying(w.description)) r.push('spéciale accélérée');
-  return r;
 }
 
 // Ligne d'efficacité d'arme : libellé « Eff » + icône(s) (weapon_effectiveness_url).
@@ -489,7 +479,6 @@ export function HeroKit({
                   cat.key !== 'weapon' &&
                   bestPerSlot.get(cat.key) === s.wiki_name;
                 const highlight = isBest || isReco;
-                const reasons = cat.key === 'weapon' ? weaponReason(s) : [];
                 const dmgVal = cat.key === 'weapon' ? weaponDmg(s) : s.might;
                 const extraMods = cat.key === 'weapon' ? extraModsLabel(s) : '';
                 return (
@@ -559,11 +548,6 @@ export function HeroKit({
                         <WeaponEff w={s} size={16} />
                       </div>
                     </div>
-                    {reasons.length ? (
-                      <div className="mt-0.5 text-[11px] text-emerald-300/90">
-                        {reasons.join(' · ')}
-                      </div>
-                    ) : null}
                     {s.description ? (
                       <p
                         className="mt-1 line-clamp-2 text-[12px] leading-snug text-warm-dim"
